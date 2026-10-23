@@ -10,6 +10,7 @@
 //     payee list when the Leash has one
 // An option that fails any of them is never offered to the signer.
 import { lookup } from "node:dns/promises";
+import { request } from "node:https";
 import { isIP } from "node:net";
 import { x402Client, x402HTTPClient } from "@x402/core/client";
 import { createEd25519Signer } from "@x402/stellar";
@@ -78,17 +79,89 @@ async function readBody(res: Response): Promise<unknown> {
 /** Loopback, private, link-local (cloud metadata), CGNAT and unspecified ranges — what an
  *  agent talked into "calling a service" must never reach on the machine it runs on. */
 export function isPrivateAddress(ip: string): boolean {
-  const v4 = ip.startsWith("::ffff:") ? ip.slice(7) : ip;
-  if (isIP(v4) === 4) {
-    const [a, b] = v4.split(".").map(Number);
-    return (
-      a === 0 || a === 10 || a === 127 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || a >= 224
-    );
-  }
-  const l = ip.toLowerCase();
-  return l === "::" || l === "::1" || l.startsWith("fc") || l.startsWith("fd") || l.startsWith("fe80");
+  if (isIP(ip) === 4) return isPrivateV4(ip.split(".").map(Number));
+  const b = ipv6Bytes(ip);
+  if (!b) return true; // not an address we can read: refuse rather than guess
+  const zero = (from: number, to: number) => b.slice(from, to).every((x) => x === 0);
+  // An IPv6 address that carries an IPv4 one is judged by the IPv4 one: mapped (::ffff:a.b.c.d,
+  // which the URL parser rewrites to ::ffff:7f00:1), compatible (::a.b.c.d, covering :: and
+  // ::1), NAT64 (64:ff9b::/96) and 6to4 (2002::/16).
+  if (zero(0, 10) && b[10] === 0xff && b[11] === 0xff) return isPrivateV4(b.slice(12));
+  if (zero(0, 12)) return isPrivateV4(b.slice(12));
+  if (b[0] === 0x00 && b[1] === 0x64 && b[2] === 0xff && b[3] === 0x9b) return zero(4, 12) ? isPrivateV4(b.slice(12)) : true;
+  if (b[0] === 0x20 && b[1] === 0x02) return isPrivateV4(b.slice(2, 6));
+  return (
+    (b[0] & 0xfe) === 0xfc || // unique local fc00::/7
+    (b[0] === 0xfe && (b[1] & 0x80) === 0x80) || // link-local fe80::/10 and site-local fec0::/10
+    b[0] === 0xff || // multicast
+    (b[0] === 0x20 && b[1] === 0x01 && b[2] === 0x00 && b[3] === 0x00) // Teredo 2001::/32 tunnels to IPv4
+  );
 }
+
+function isPrivateV4([a, b]: number[]): boolean {
+  return (
+    a === 0 || a === 10 || a === 127 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || a >= 224
+  );
+}
+
+/** The 16 bytes of an IPv6 address (any spelling, dotted tail included), or null. */
+function ipv6Bytes(ip: string): number[] | null {
+  if (isIP(ip) !== 6) return null;
+  let s = ip.toLowerCase().split("%")[0];
+  const dotted = s.match(/(\d+\.\d+\.\d+\.\d+)$/);
+  if (dotted) {
+    const [a, b, c, d] = dotted[1].split(".").map(Number);
+    s = s.slice(0, -dotted[1].length) + `${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
+  }
+  const [head, tail] = s.split("::");
+  const groups = (part?: string) => (part ? part.split(":") : []);
+  const h = groups(head);
+  const t = tail === undefined ? [] : groups(tail);
+  const words = [...h, ...Array(8 - h.length - t.length).fill("0"), ...t].map((g) => parseInt(g, 16));
+  return words.flatMap((w) => [w >> 8, w & 0xff]);
+}
+
+/** fetch for mainnet: every connection is checked again at the moment it is made, on the
+ *  addresses actually dialled — so a host that resolved to a public address for urlProblem
+ *  cannot answer with a private one a moment later (DNS rebinding). Redirects are never
+ *  followed: node:https does not follow them. */
+export const pinnedFetch: typeof fetch = async (input, init = {}) => {
+  const url = new URL(input instanceof Request ? input.url : String(input));
+  const headers: Record<string, string> = {};
+  new Headers(init.headers).forEach((v, k) => (headers[k] = v));
+  const checkedLookup = (host: string, opts: LookupOptions, cb: LookupCallback) => {
+    lookup(host, { all: true, family: opts.family }).then((addrs) => {
+      const bad = addrs.find((a) => isPrivateAddress(a.address));
+      if (bad) return cb(new Error(`${host} resolves to a private address`), "", 0);
+      if (addrs.length === 0) return cb(new Error(`${host} does not resolve`), "", 0);
+      return opts.all ? cb(null, addrs) : cb(null, addrs[0].address, addrs[0].family);
+    }, (err) => cb(err, "", 0));
+  };
+  return new Promise<Response>((resolve, reject) => {
+    const req = request(url, { method: init.method ?? "GET", headers, lookup: checkedLookup as never }, (res) => {
+      const chunks: Buffer[] = [];
+      res.on("data", (c: Buffer) => chunks.push(c));
+      res.on("error", reject);
+      res.on("end", () => {
+        const out = new Headers();
+        for (const [k, v] of Object.entries(res.headers)) {
+          for (const one of Array.isArray(v) ? v : v === undefined ? [] : [v]) out.append(k, one);
+        }
+        const status = res.statusCode ?? 502;
+        const body = [204, 205, 304].includes(status) ? null : Buffer.concat(chunks);
+        resolve(new Response(body, { status, statusText: res.statusMessage, headers: out }));
+      });
+    });
+    req.on("error", reject);
+    if (init.signal) init.signal.addEventListener("abort", () => req.destroy(new Error("aborted")));
+    if (typeof init.body === "string") req.write(init.body);
+    req.end();
+  });
+};
+
+type LookupOptions = { family?: number; all?: boolean };
+type LookupCallback = (err: Error | null, address: string | { address: string; family: number }[], family?: number) => void;
 
 /** Why the agent may not call this URL, or null. https only, to a public host; plain http and
  *  local hosts only on testnet, where the local test sellers live. */
@@ -122,7 +195,7 @@ const keyOf = (r: PaymentRequirements) => `${r.network}|${r.asset}|${r.payTo}|${
 export async function callService(ctx: ServerContext, args: CallArgs, deps: CallDeps = {}): Promise<CallOutcome> {
   const treasuryId = requireTreasury(ctx);
   if (!ctx.credential) throw new Error("No agent credential — run `eunomia-mcp init` first.");
-  const fetchImpl = deps.fetchImpl ?? globalThis.fetch;
+  const fetchImpl = deps.fetchImpl ?? (ctx.net.name === "pubnet" ? pinnedFetch : globalThis.fetch);
   const method = (args.method ?? "POST").toUpperCase();
   const bad = await urlProblem(args.url, ctx.net.name, deps.resolve ?? defaultResolve);
   if (bad) throw new Error(`refusing to call ${args.url}: ${bad}`);

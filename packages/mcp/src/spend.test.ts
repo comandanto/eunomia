@@ -294,6 +294,36 @@ test("on mainnet only https to a public host is called", async () => {
   assert.ok(!isPrivateAddress("8.8.8.8"));
 });
 
+test("an IPv4 address dressed as IPv6 is judged as the IPv4 address", async () => {
+  const { urlProblem, isPrivateAddress } = await import("./call.js");
+  const publicHost = async () => ["104.18.1.1"];
+  // the URL parser rewrites [::ffff:127.0.0.1] to [::ffff:7f00:1]
+  for (const url of [
+    "https://[::ffff:127.0.0.1]/",
+    "https://[::ffff:7f00:1]/",
+    "https://[::ffff:a9fe:a9fe]/latest/meta-data",
+    "https://[::7f00:1]/",
+    "https://[64:ff9b::7f00:1]/",
+    "https://[2002:7f00:1::]/",
+    "https://[::]/",
+  ]) {
+    assert.match((await urlProblem(url, "pubnet", publicHost)) ?? "", /private/, url);
+  }
+  for (const ip of ["::ffff:10.0.0.1", "0:0:0:0:0:ffff:c0a8:0101", "fe80::1", "fec0::1", "fd00::1", "ff02::1", "2001:0:4136:e378::1"]) {
+    assert.ok(isPrivateAddress(ip), ip);
+  }
+  for (const ip of ["::ffff:8.8.8.8", "64:ff9b::808:808", "2606:4700::1111", "2001:4860:4860::8888"]) {
+    assert.ok(!isPrivateAddress(ip), ip);
+  }
+  assert.match((await urlProblem("https://evil.example/", "pubnet", async () => ["::ffff:7f00:1"])) ?? "", /private/);
+});
+
+test("on mainnet the address is checked again when the connection is made (DNS rebinding)", async () => {
+  const { pinnedFetch } = await import("./call.js");
+  // urlProblem never sees this host here: the connection itself must refuse it
+  await assert.rejects(pinnedFetch("https://localhost:9/"), /private/);
+});
+
 test("call_service refuses a private target before any request is made", async () => {
   let called = false;
   const fetchImpl = (async () => {
