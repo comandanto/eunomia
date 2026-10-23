@@ -400,15 +400,15 @@ export function TreasuryProvider({ children }: { children: React.ReactNode }) {
   const fund = useCallback(
     async (amount: string): Promise<ActionOutcome> => {
       if (!address || !treasuryId) return fail("No treasury open.");
-      // XLM sent into a USDC treasury would sit there for good: the contract pays out and
-      // withdraws its own token only.
-      if (tokenCodeOf(state?.token) !== "XLM") return invalid("This treasury holds USDC — add funds with TRY instead.");
+      // A deposit moves the treasury's own token, so the unit is the treasury's, never a
+      // choice: XLM sent into a USDC treasury would sit there for good.
+      const unit = tokenCodeOf(state?.token);
       const amt = parseXlmAmount(amount);
       if (!amt.ok) return invalid(amt.msg);
       setBusy("fund");
       toast("info", "Funding — confirm in your wallet…");
       try {
-        const hash = await fundTreasury(treasuryId, await executorFor(address), amt.value);
+        const hash = await fundTreasury(treasuryId, await executorFor(address), amt.value, unit);
         void logActivity({ walletAddress: address, treasuryId, action: "fund", txHash: hash, amountXlm: amt.value });
         toast("success", "Funded ✓", { hash });
         bump();

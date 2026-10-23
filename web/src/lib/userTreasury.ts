@@ -12,8 +12,9 @@ import {
   xdr,
 } from "@stellar/stellar-sdk";
 import { Client, type Session } from "./treasuryClient";
-import { contractErr, errText } from "./wallet-errors";
+import { contractErr, depositErr, errText } from "./wallet-errors";
 import type { SubmittableTx, TxExecutor } from "./executor";
+import type { TokenCode } from "./token";
 import { TREASURY_WASM_HASH } from "./treasuryWasm";
 import { DEPOSIT_CAP_STROOPS, NETWORK_PASSPHRASE, RPC_URL, XLM_SAC } from "../config";
 
@@ -168,8 +169,8 @@ async function speaksDeposit(t: Treasury): Promise<boolean> {
   }
 }
 
-/** Fund a treasury by transferring native XLM from the session's address into the treasury
- *  contract — a SAC transfer either way, but authorised differently.
+/** Fund a treasury from the session's address — a SAC transfer either way, but authorised
+ *  differently.
  *
  *  A wallet is the transaction source, so its own signature covers the `from` auth. A smart
  *  wallet cannot be a source at all: it signs the auth entry instead and the relay submits.
@@ -177,26 +178,29 @@ async function speaksDeposit(t: Treasury): Promise<boolean> {
 export async function fundTreasury(
   contractId: string,
   executor: TxExecutor,
-  amountXlm: number,
+  amount: number,
+  unit: TokenCode = "XLM",
 ): Promise<string | undefined> {
-  // v4 treasuries take funding through their capped `deposit`; a bare transfer would walk
-  // straight past the beta's deposit cap. Older treasuries have no `deposit` and keep the
-  // transfer below.
+  // v4 treasuries take funding through their capped `deposit`, which moves the treasury's own
+  // token — XLM or USDC alike. A bare transfer would walk straight past the beta's deposit
+  // cap. Older treasuries have no `deposit` and keep the XLM transfer below.
   const t = makeTreasury(contractId, executor);
   if (await speaksDeposit(t)) {
     try {
       const { hash } = await t.submit(
-        await t.client.deposit({ from: executor.address, amount: toStroops(amountXlm) }),
+        await t.client.deposit({ from: executor.address, amount: toStroops(amount) }),
       );
       return hash;
     } catch (e) {
-      const ce = contractErr(errText(e));
-      throw ce ? new Error(ce.errorMessage) : e;
+      const why = depositErr(errText(e), unit);
+      throw why ? new Error(why) : e;
     }
   }
+  // Before v4, a USDC treasury was only ever funded through the testnet anchor.
+  if (unit !== "XLM") throw new Error("This treasury predates deposits — add USDC to it through the anchor.");
 
   if (executor.transferXlm) {
-    await executor.transferXlm(contractId, toStroops(amountXlm));
+    await executor.transferXlm(contractId, toStroops(amount));
     return undefined;
   }
 
@@ -209,7 +213,7 @@ export async function fundTreasury(
     "transfer",
     new Address(address).toScVal(),
     new Address(contractId).toScVal(),
-    nativeToScVal(toStroops(amountXlm), { type: "i128" }),
+    nativeToScVal(toStroops(amount), { type: "i128" }),
   );
   const built = new TransactionBuilder(account, {
     fee: BASE_FEE,

@@ -5,9 +5,9 @@
 //
 // There is no "send a payment" here on purpose: the agent pays, the rules decide, this
 // page reports. Paying by hand is the escape hatch on the Payments page.
-import { Suspense, lazy, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { EXPLORER, IS_TESTNET, fmtXlm, shortAddr } from "../config";
+import { EXPLORER, IS_TESTNET, USDC_TOKEN, fmtXlm, shortAddr } from "../config";
 import { useTreasury } from "../state/useTreasury";
 import { useAnalyticsScore } from "../lib/useAnalytics";
 import { useTreasuryActivity } from "../lib/useTreasuryActivity";
@@ -16,7 +16,7 @@ import { dedupeRefusals, useAgentRejections } from "../lib/agentRejections";
 import { computeAnomaly, mergeLedger } from "../lib/eventLedger";
 import { loadPayeeBook, mergePayees, payeesFromEvents } from "../lib/payees";
 import { setupProgress, type SetupStep } from "../lib/onboarding";
-import { needsFunding, MIN_XLM } from "../lib/funding";
+import { getTokenBalance, needsFunding, MIN_XLM } from "../lib/funding";
 import { useNow } from "../lib/useNow";
 import type { View } from "../lib/routes";
 import RecentActivity from "../components/shell/RecentActivity";
@@ -140,7 +140,20 @@ export default function Overview({ onGo }: { onGo: (v: View) => void }) {
     });
   };
 
-  const xlmFundForm = (inSheet: boolean) => (
+  // The wallet's USDC, read when the form opens. XLM has its own low-wallet notice above;
+  // USDC has none, and a deposit from an empty wallet is the first thing to go wrong.
+  const [walletUsdc, setWalletUsdc] = useState<number | null>(null);
+  useEffect(() => {
+    if (!fundOpen || t.tokenCode !== "USDC" || !t.address) return;
+    let live = true;
+    void getTokenBalance(USDC_TOKEN, t.address).then((b) => live && setWalletUsdc(b));
+    return () => {
+      live = false;
+    };
+  }, [fundOpen, t.tokenCode, t.address, t.refreshKey]);
+
+  // A deposit always moves the treasury's own token, so the form speaks in it.
+  const walletFundForm = (inSheet: boolean) => (
     <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
       <input
         className="field field--mono"
@@ -148,14 +161,21 @@ export default function Overview({ onGo }: { onGo: (v: View) => void }) {
         ref={inSheet ? undefined : fundInput}
         autoFocus={inSheet}
         inputMode="decimal"
-        placeholder="Amount in XLM"
-        aria-label="Fund amount in XLM"
+        placeholder={`Amount in ${t.tokenCode}`}
+        aria-label={`Fund amount in ${t.tokenCode}`}
         value={fundAmt}
         onChange={(e) => setFundAmt(e.target.value)}
       />
       <button className="btn" onClick={() => void doFund()} disabled={!!t.busy} type="button">
         {t.busy === "fund" ? "Funding…" : "Fund"}
       </button>
+      {t.tokenCode === "USDC" && walletUsdc !== null && (
+        <div className="panel__note" style={{ width: "100%" }}>
+          {walletUsdc > 0
+            ? `Your wallet holds ${walletUsdc.toFixed(2)} USDC.`
+            : "Your wallet holds no USDC yet — send some to it first."}
+        </div>
+      )}
       {fundErr && <div className="err" style={{ width: "100%" }}>{fundErr}</div>}
     </div>
   );
@@ -182,17 +202,15 @@ export default function Overview({ onGo }: { onGo: (v: View) => void }) {
     setFundOpen(false);
     setFundErr("");
   };
-  // A USDC treasury is funded with TRY through the anchor; an XLM one from the wallet. The
-  // anchor is a testnet sandbox, so mainnet has no USDC path here yet.
+  // On testnet a USDC treasury is funded with TRY through the anchor sandbox. Everywhere else
+  // the deposit comes from the wallet, in the treasury's own token.
   const fundForm = (inSheet: boolean) =>
-    t.tokenCode !== "USDC" ? (
-      xlmFundForm(inSheet)
-    ) : AddFundsTry ? (
+    t.tokenCode === "USDC" && AddFundsTry ? (
       <Suspense fallback={null}>
         <AddFundsTry onDone={closeFund} />
       </Suspense>
     ) : (
-      <div className="panel__note">Adding USDC on mainnet opens with the beta.</div>
+      walletFundForm(inSheet)
     );
 
   return (

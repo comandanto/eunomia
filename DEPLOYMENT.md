@@ -412,6 +412,14 @@ The app creates through the v4 factory; the relay keeps admitting the v3.5 facto
   `dist/build-info.json` (written by the build) and fails a mainnet bundle that holds any secret
   seed, the demo's addresses or a testnet RPC/Horizon host; CI builds a mainnet bundle with
   stand-in ids on every push. The CSP adds the pinned RPC's origin and drops the anchor.
+- **Mainnet USDC deposits (2026-10-23).** With the anchor out, a USDC treasury is funded the
+  way an XLM one is: the owner's wallet (classic or passkey) calls the treasury's `deposit`,
+  which moves the treasury's own token under the same cap. The fund form shows the wallet's
+  USDC first, read from the SAC (a missing trustline reads as 0). A failed deposit is worded by
+  `depositErr`: only #1 and #16 are the treasury's, every other code is the token's — the SAC's
+  #10 (short balance) had been shown as "over the session's spending cap", on XLM deposits too.
+  The factory's cap is one number in whole units for both tokens, so 100 means 100 XLM or
+  100 USDC.
 
 | Item | Value |
 |---|---|

@@ -26,10 +26,13 @@ export async function getXlmBalance(
   return native ? Number(native.balance) : 0;
 }
 
-/** XLM held by a contract account, read from the native SAC by simulation (no signature,
- *  no fee). Returns null when the balance cannot be read at all, matching the classic
- *  helper's "unknown" case. */
-export async function getContractXlmBalance(address: string): Promise<number | null> {
+/** What an address holds of a token, read from the token's SAC by simulation (no signature,
+ *  no fee). Works for a classic account and a smart wallet alike. Returns null when the
+ *  balance cannot be read at all, matching the classic helper's "unknown" case.
+ *
+ *  A classic account with no trustline for the token holds none of it, but the SAC does not
+ *  say 0: it fails with its TrustlineMissingError (#13). That one failure reads as 0. */
+export async function getTokenBalance(sac: string, address: string): Promise<number | null> {
   const { Account, BASE_FEE, Contract, TransactionBuilder, rpc, scValToNative, Address } =
     await import("@stellar/stellar-sdk");
 
@@ -38,16 +41,22 @@ export async function getContractXlmBalance(address: string): Promise<number | n
       fee: BASE_FEE,
       networkPassphrase: NETWORK_PASSPHRASE,
     })
-      .addOperation(new Contract(XLM_SAC).call("balance", new Address(address).toScVal()))
+      .addOperation(new Contract(sac).call("balance", new Address(address).toScVal()))
       .setTimeout(30)
       .build();
 
     const sim = await new rpc.Server(RPC_URL).simulateTransaction(tx);
+    if (rpc.Api.isSimulationError(sim) && /Error\(Contract,\s*#13\)/.test(sim.error)) return 0;
     if (!rpc.Api.isSimulationSuccess(sim) || !sim.result?.retval) return null;
     return Number(scValToNative(sim.result.retval) as bigint) / 10_000_000;
   } catch {
     return null;
   }
+}
+
+/** XLM held by a contract account, from the native SAC. */
+export function getContractXlmBalance(address: string): Promise<number | null> {
+  return getTokenBalance(XLM_SAC, address);
 }
 
 /** Ask friendbot to create + fund the account with test XLM. Friendbot only works for

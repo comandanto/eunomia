@@ -96,3 +96,15 @@ export function contractErr(msg: string): { errorCode: number; errorMessage: str
   const code = Number(m[1]);
   return { errorCode: code, errorMessage: CONTRACT_ERRORS[code] ?? `Contract error #${code}` };
 }
+
+/** A failed `deposit`, worded for the person depositing. The treasury itself only refuses a
+ *  deposit with 1 or 16; every other code came from the token it moves, and the token's
+ *  codes overlap the treasury's — the SAC's #10 is a short balance, not a session cap. */
+export function depositErr(msg: string, unit: string): string | null {
+  const ce = contractErr(msg);
+  if (!ce) return null;
+  if (ce.errorCode === 1 || ce.errorCode === 16) return ce.errorMessage;
+  if (ce.errorCode === 10) return `Your wallet doesn't hold that much ${unit}.`;
+  if (ce.errorCode === 13) return `Your wallet can't hold ${unit} yet — it needs a ${unit} trustline first.`;
+  return `The ${unit} token refused the deposit (#${ce.errorCode}).`;
+}

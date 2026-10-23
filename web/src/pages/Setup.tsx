@@ -200,7 +200,7 @@ export default function Setup({ onGo }: { onGo: (v: View) => void }) {
               treasury — with no wallet prompt.
             </div>
           ) : (
-            <div className="panel__note">It opens empty; you add USDC next.</div>
+            <div className="panel__note">It opens empty. Right after, you deposit USDC into it from your wallet.</div>
           )}
 
           {/* the optional parts, folded */}

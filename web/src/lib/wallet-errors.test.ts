@@ -3,6 +3,7 @@ import {
   connectErr,
   CONTRACT_ERRORS,
   contractErr,
+  depositErr,
   errText,
   isStaleSessionError,
   sendErr,
@@ -81,6 +82,25 @@ describe("contractErr", () => {
   });
   it("parses the variant without a # prefix", () => {
     expect(contractErr("Error(Contract, 5)")?.errorCode).toBe(5);
+  });
+});
+
+// A deposit fails inside the token as often as inside the treasury, and the two number their
+// errors independently: read as the treasury's, the SAC's short balance (#10) said "over the
+// session's spending cap" to someone who was only funding.
+describe("depositErr", () => {
+  it("keeps the treasury's own deposit refusals", () => {
+    expect(depositErr("Error(Contract, #16)", "USDC")).toBe(CONTRACT_ERRORS[16]);
+    expect(depositErr("Error(Contract, #1)", "XLM")).toBe(CONTRACT_ERRORS[1]);
+  });
+  it("reads the token's codes as the token's", () => {
+    expect(depositErr("HostError: Error(Contract, #10)", "XLM")).toBe("Your wallet doesn't hold that much XLM.");
+    expect(depositErr("HostError: Error(Contract, #13)", "USDC")).toMatch(/needs a USDC trustline/);
+    expect(depositErr("Error(Contract, #10)", "USDC")).not.toMatch(/session/i);
+    expect(depositErr("Error(Contract, #6)", "USDC")).toMatch(/USDC token refused the deposit \(#6\)/);
+  });
+  it("leaves a non-contract failure to the caller", () => {
+    expect(depositErr("tx bad_seq", "XLM")).toBeNull();
   });
 });
 
