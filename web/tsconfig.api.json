@@ -2,7 +2,7 @@
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.api.tsbuildinfo",
     "target": "es2023",
-    /* Serverless functions run on Node with the Web fetch API available (Vercel Node 24). */
+    /* The Cloudflare worker: the Web fetch API, plus Node built-ins under nodejs_compat. */
     "lib": ["ES2023", "DOM"],
     "module": "esnext",
     "types": ["node"],
@@ -22,5 +22,5 @@
     "noFallthroughCasesInSwitch": true
   },
   /* The guards live in src/ and are shared with the app; they are type-checked here too. */
-  "include": ["api", "worker", "src/lib/hostFunction.ts", "src/lib/relayGuard.ts"]
+  "include": ["worker","src/lib/hostFunction.ts", "src/lib/relayGuard.ts"]
 }

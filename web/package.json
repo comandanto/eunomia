@@ -5,9 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run docs:build && tsc -b && npm run check:api-types && vite build && node scripts/headers.mjs && npm run check:no-secrets",
+    "build": "npm run docs:build && tsc -b && vite build && node scripts/headers.mjs && npm run check:no-secrets",
     "check:no-secrets": "node scripts/check-no-secrets.mjs",
-    "check:api-types": "tsc --noEmit --ignoreConfig --module nodenext --moduleResolution nodenext --target es2022 --skipLibCheck --types node api/relay.ts",
     "docs:dev": "vitepress dev docs-site",
     "docs:build": "vitepress build docs-site",
     "lint": "eslint .",

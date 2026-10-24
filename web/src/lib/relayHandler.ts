@@ -1,6 +1,6 @@
-// Fee sponsorship for passkey users, independent of where it is hosted. Vercel's api/relay.ts
-// and the Cloudflare Pages function both call handleRelay with their own env; nothing in here
-// reads process.env or any platform global.
+// Fee sponsorship for passkey users, independent of where it is hosted. The Cloudflare worker
+// (worker/index.ts) calls handleRelay with its env; nothing in here reads process.env or any
+// platform global.
 //
 // A smart wallet holds no XLM, so somebody else has to source the transaction. This does
 // that — and nothing more. Authorisation stays with the user: the auth entries are signed by

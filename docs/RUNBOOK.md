@@ -89,8 +89,6 @@ stellar contract extend --wasm-hash fdefad64b96837147e1c333e51f537b696eab925e9f1
   and code they were born with. Update `web/src/networks.ts`, `RELAY_FACTORY_ID`, the docs,
   and keep the old treasury wasm hash in `relayGuard.allowedWasmHashes` so those owners can
   still use the relay.
-- **The Supabase reset** (`supabase/migrations/0007_mainnet_reset.sql`) runs once, after
-  `eunomia.finance` stops serving the testnet app. It archives before it deletes.
 - **Deploys** of the app and the indexer: `npm run deploy:cf` in `web/` with
-  `EUNOMIA_RPC_URL=https://<host>/api/rpc`, and `npx wrangler deploy` in
+  `EUNOMIA_RPC_URL=https://eunomia.finance/api/rpc`, and `npx wrangler deploy` in
   `workers/chain-indexer/`. After either, load the app and check the log for a minute.

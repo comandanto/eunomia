@@ -8,6 +8,9 @@
   "compatibility_date": "2026-10-01",
   // stellar-sdk decodes XDR with Buffer
   "compatibility_flags": ["nodejs_compat"],
+  // eunomia.finance is the passkey rp.id (src/config.ts RP_ID); www is redirected to it by a
+  // zone rule, not served here.
+  "routes": [{ "pattern": "eunomia.finance", "custom_domain": true }],
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",

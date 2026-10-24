@@ -5,9 +5,6 @@
 // cannot be written by hand: the docs site (VitePress) inlines a page-hash map that changes
 // whenever the docs do. So they are read from the built HTML here, after `vite build`, and the
 // policy always matches the files it ships with.
-//
-// Vercel (until the move) keeps its own headers in vercel.json; this file is the Cloudflare
-// one.
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";

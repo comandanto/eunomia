@@ -83,7 +83,6 @@ src/lib/                  userTreasury (deploy/fund/pay) · smartWalletTx (act a
                           relayHandler (fee sponsorship) · passkey · walletKit/walletSigner
                           insights (chart series) · events/analytics · activity (Supabase)
 worker/                   the Cloudflare worker: static assets + /api/relay, and its daily fee budget
-api/                      Vercel's copy of the relay, kept until the domain moves (answers 503: no limiters)
 src/networks.ts           the mainnet table and the build settings that complete it
 src/config.ts             the app's view of that network — public values only
 ```

@@ -100,7 +100,11 @@ the token surfaces with the token's own numbering.
   key, the in-browser Leash key, friendbot, the faucet and the TRY anchor sandbox are gone
   from the code; the Leash is always the agent's own key, registered by its public half.
 
-Moving eunomia.finance itself is a DNS change (Porkbun → Cloudflare) and the last step.
+- **eunomia.finance (2026-10-24).** The zone moved to Cloudflare (Porkbun stays the
+  registrar) and the worker serves the apex as a custom domain (`routes` in `wrangler.jsonc`);
+  `www` redirects to it by a zone rule. The domain is the passkey `rp.id`, so passkeys work
+  there only. The workers.dev host is off, and the Vercel app and its `api/relay.ts` are gone.
+  Mail for hello@ is still forwarded by Porkbun: the zone keeps its MX and SPF records.
 
 ## Usage metrics — chain indexer
 

@@ -1,10 +1,6 @@
 // The relay endpoint is public in an open-source repo: without this gate anyone could spend
 // our OZ Channels fee quota. Kept as a pure function so it is testable without the Node
 // runtime the proxy itself runs in.
-// Explicit .js extension, unlike the rest of src/: the serverless relay imports this module,
-// and Vercel compiles api/* with node16 resolution, where an extensionless relative import
-// does not resolve and the function dies at cold start with a 500. `npm run check:api-types`
-// guards it. (Vite and vitest map the .js back to this .ts, so the bundle is unaffected.)
 import { Address, type xdr } from "@stellar/stellar-sdk";
 import { LEGACY_TREASURY_WASM_HASHES, TREASURY_WASM_HASH } from "./treasuryWasm.js";
 

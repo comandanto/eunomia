@@ -1,8 +1,7 @@
 # Security headers
 
 Written by `scripts/headers.mjs` into `dist/_headers` after every `vite build`, and served by
-Cloudflare with every static asset. Closes audit finding F4. (`vercel.json` keeps the older,
-smaller set for the Vercel host until the domain moves.)
+Cloudflare with every static asset. Closes audit finding F4.
 
 | Header | Value | Why |
 |---|---|---|
