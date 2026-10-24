@@ -51,7 +51,7 @@ export interface Setup {
   daily_limit: i128;
   /**
  * Amount of `token` deposited from the owner into the treasury (0 = unfunded). Refused
- * as a whole if it exceeds the factory's deposit cap.
+ * as a whole if it exceeds the token's deposit cap.
  */
 fund: i128;
   /**
@@ -99,6 +99,16 @@ export interface PayeeCap {
   payee: string;
 }
 
+
+/**
+ * A token the factory accepts and the deposit cap its treasuries are born with
+ * (0 = uncapped), in the token's own units.
+ */
+export interface TokenCap {
+  cap: i128;
+  token: string;
+}
+
 export interface Client {
   /**
    * Construct and simulate a create transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
@@ -111,15 +121,22 @@ export interface Client {
   create: ({s}: {s: Setup}, options?: MethodOptions) => Promise<AssembledTransaction<string>>
 
   /**
+   * Construct and simulate a tokens transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * The tokens a treasury from this factory may hold.
+   */
+  tokens: (options?: MethodOptions) => Promise<AssembledTransaction<Array<string>>>
+
+  /**
    * Construct and simulate a registry transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
   registry: (options?: MethodOptions) => Promise<AssembledTransaction<string>>
 
   /**
    * Construct and simulate a deposit_cap transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * The deposit cap every treasury from this factory is born with (0 = uncapped).
+   * The deposit cap a treasury of `token` is born with (0 = uncapped), or `None` for a
+   * token this factory does not accept.
    */
-  deposit_cap: (options?: MethodOptions) => Promise<AssembledTransaction<i128>>
+  deposit_cap: ({token}: {token: string}, options?: MethodOptions) => Promise<AssembledTransaction<Option<i128>>>
 
   /**
    * Construct and simulate a treasury_wasm transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
@@ -130,7 +147,7 @@ export interface Client {
 export class Client extends ContractClient {
   static async deploy<T = Client>(
         /** Constructor/Initialization Args for the contract's `__constructor` method */
-        {treasury_wasm, registry, deposit_cap}: {treasury_wasm: Buffer, registry: string, deposit_cap: i128},
+        {treasury_wasm, registry, caps}: {treasury_wasm: Buffer, registry: string, caps: Array<TokenCap>},
     /** Options for initializing a Client as well as for calling a method, with extras specific to deploying. */
     options: MethodOptions &
       Omit<ContractClientOptions, "contractId"> & {
@@ -142,25 +159,28 @@ export class Client extends ContractClient {
         format?: "hex" | "base64";
       }
   ): Promise<AssembledTransaction<T>> {
-    return ContractClient.deploy({treasury_wasm, registry, deposit_cap}, options)
+    return ContractClient.deploy({treasury_wasm, registry, caps}, options)
   }
   constructor(public readonly options: ContractClientOptions) {
     super(
       new ContractSpec([ "AAAAAQAAAFNBIHRpbWUtYm91bmQsIHNwZW5kLWNhcHBlZCBhZ2VudCBjcmVkZW50aWFsIHRvIHN0YXJ0IHRoZSB0cmVhc3VyeSB3aXRoICh0aGUgTGVhc2gpLgAAAAAAAAAABUxlYXNoAAAAAAAAAwAAAAAAAAAFYWdlbnQAAAAAAAATAAAAAAAAAAVsaW1pdAAAAAAAAAsAAAAAAAAAC3ZhbGlkX3VudGlsAAAAAAY=",
-        "AAAAAQAAAEpFdmVyeXRoaW5nIGEgdHJlYXN1cnkgbmVlZHMgdG8gYmUgdXNlZnVsIG9uIHRoZSBmaXJzdCBsZWRnZXIgaXQgZXhpc3RzIGluLgAAAAAAAAAAAAVTZXR1cAAAAAAAAAsAAAAAAAAAC2RhaWx5X2xpbWl0AAAAAAsAAACIQW1vdW50IG9mIGB0b2tlbmAgZGVwb3NpdGVkIGZyb20gdGhlIG93bmVyIGludG8gdGhlIHRyZWFzdXJ5ICgwID0gdW5mdW5kZWQpLiBSZWZ1c2VkCmFzIGEgd2hvbGUgaWYgaXQgZXhjZWVkcyB0aGUgZmFjdG9yeSdzIGRlcG9zaXQgY2FwLgAAAARmdW5kAAAACwAAAKNTdGFydCBhIExlYXNoIGZvciBhbiBhZ2VudCBrZXkgcmlnaHQgYXdheTogZW1wdHkgPSBub25lLCBvbmUgZW50cnkgPSB0aGF0IGFnZW50LgooQSBgVmVjYCByYXRoZXIgdGhhbiBhbiBgT3B0aW9uYDogdGhlIFNESydzIHNwZWMgY2Fubm90IGNhcnJ5IGFuIG9wdGlvbmFsIHN0cnVjdC4pAAAAAAVsZWFzaAAAAAAAA+oAAAfQAAAABUxlYXNoAAAAAAAARk1vc3QgdGhlIGFnZW50IG1heSBtb3ZlIHBlciBVVEMgY2FsZW5kYXIgbW9udGggKDAgPSBubyBtb250aGx5IGxpbWl0KS4AAAAAAA1tb250aGx5X2xpbWl0AAAAAAAACwAAAFFPd25lciBvZiB0aGUgZnVuZHM6IGJlY29tZXMgdGhlIHRyZWFzdXJ5J3MgYWRtaW4gQU5EIHJvb3QgYWdlbnQgKGFzIHRoZSBhcHAgZGlkKS4AAAAAAAAFb3duZXIAAAAAAAATAAAAU01vbnRobHkgY2FwcyBvbiBpbmRpdmlkdWFsIHBheWVlcyAobWF5IGJlIGVtcHR5KS4gQSBjYXAgZG9lcyBub3QgYXBwcm92ZSBpdHMgcGF5ZWUuAAAAAApwYXllZV9jYXBzAAAAAAPqAAAH0AAAAAhQYXllZUNhcAAAAC5QYXllZXMgYXBwcm92ZWQgZnJvbSB0aGUgc3RhcnQgKG1heSBiZSBlbXB0eSkuAAAAAAAGcGF5ZWVzAAAAAAPqAAAAEwAAAAAAAAAOcGVyX3Rhc2tfbGltaXQAAAAAAAsAAABMUmVjb3JkIHRoZSB0cmVhc3VyeSB1bmRlciB0aGUgb3duZXIgaW4gdGhlIHJlZ2lzdHJ5IChjcm9zcy1kZXZpY2UgcmVjb3ZlcnkpLgAAAAhyZWdpc3RlcgAAAAEAAABOQ2FsbGVyLWNob3NlbjsgdGhlIHRyZWFzdXJ5IGFkZHJlc3MgaXMgZGVyaXZlZCBmcm9tIHRoZSBmYWN0b3J5IGFuZCB0aGlzIHNhbHQuAAAAAAAEc2FsdAAAA+4AAAAgAAAAMVNFUC00MSAvIFNBQyB0b2tlbiB0aGUgdHJlYXN1cnkgaG9sZHMgYW5kIHNwZW5kcy4AAAAAAAAFdG9rZW4AAAAAAAAT",
+        "AAAAAQAAAEpFdmVyeXRoaW5nIGEgdHJlYXN1cnkgbmVlZHMgdG8gYmUgdXNlZnVsIG9uIHRoZSBmaXJzdCBsZWRnZXIgaXQgZXhpc3RzIGluLgAAAAAAAAAAAAVTZXR1cAAAAAAAAAsAAAAAAAAAC2RhaWx5X2xpbWl0AAAAAAsAAACGQW1vdW50IG9mIGB0b2tlbmAgZGVwb3NpdGVkIGZyb20gdGhlIG93bmVyIGludG8gdGhlIHRyZWFzdXJ5ICgwID0gdW5mdW5kZWQpLiBSZWZ1c2VkCmFzIGEgd2hvbGUgaWYgaXQgZXhjZWVkcyB0aGUgdG9rZW4ncyBkZXBvc2l0IGNhcC4AAAAAAARmdW5kAAAACwAAAKNTdGFydCBhIExlYXNoIGZvciBhbiBhZ2VudCBrZXkgcmlnaHQgYXdheTogZW1wdHkgPSBub25lLCBvbmUgZW50cnkgPSB0aGF0IGFnZW50LgooQSBgVmVjYCByYXRoZXIgdGhhbiBhbiBgT3B0aW9uYDogdGhlIFNESydzIHNwZWMgY2Fubm90IGNhcnJ5IGFuIG9wdGlvbmFsIHN0cnVjdC4pAAAAAAVsZWFzaAAAAAAAA+oAAAfQAAAABUxlYXNoAAAAAAAARk1vc3QgdGhlIGFnZW50IG1heSBtb3ZlIHBlciBVVEMgY2FsZW5kYXIgbW9udGggKDAgPSBubyBtb250aGx5IGxpbWl0KS4AAAAAAA1tb250aGx5X2xpbWl0AAAAAAAACwAAAFFPd25lciBvZiB0aGUgZnVuZHM6IGJlY29tZXMgdGhlIHRyZWFzdXJ5J3MgYWRtaW4gQU5EIHJvb3QgYWdlbnQgKGFzIHRoZSBhcHAgZGlkKS4AAAAAAAAFb3duZXIAAAAAAAATAAAAU01vbnRobHkgY2FwcyBvbiBpbmRpdmlkdWFsIHBheWVlcyAobWF5IGJlIGVtcHR5KS4gQSBjYXAgZG9lcyBub3QgYXBwcm92ZSBpdHMgcGF5ZWUuAAAAAApwYXllZV9jYXBzAAAAAAPqAAAH0AAAAAhQYXllZUNhcAAAAC5QYXllZXMgYXBwcm92ZWQgZnJvbSB0aGUgc3RhcnQgKG1heSBiZSBlbXB0eSkuAAAAAAAGcGF5ZWVzAAAAAAPqAAAAEwAAAAAAAAAOcGVyX3Rhc2tfbGltaXQAAAAAAAsAAABMUmVjb3JkIHRoZSB0cmVhc3VyeSB1bmRlciB0aGUgb3duZXIgaW4gdGhlIHJlZ2lzdHJ5IChjcm9zcy1kZXZpY2UgcmVjb3ZlcnkpLgAAAAhyZWdpc3RlcgAAAAEAAABOQ2FsbGVyLWNob3NlbjsgdGhlIHRyZWFzdXJ5IGFkZHJlc3MgaXMgZGVyaXZlZCBmcm9tIHRoZSBmYWN0b3J5IGFuZCB0aGlzIHNhbHQuAAAAAAAEc2FsdAAAA+4AAAAgAAAAMVNFUC00MSAvIFNBQyB0b2tlbiB0aGUgdHJlYXN1cnkgaG9sZHMgYW5kIHNwZW5kcy4AAAAAAAAFdG9rZW4AAAAAAAAT",
         "AAAAAQAAADVBIG1vbnRobHkgY2VpbGluZyBvbiB3aGF0IG9uZSBwYXllZSBtYXkgcmVjZWl2ZSAodjQpLgAAAAAAAAAAAAAIUGF5ZWVDYXAAAAACAAAAAAAAAANjYXAAAAAACwAAAAAAAAAFcGF5ZWUAAAAAAAAT",
+        "AAAAAQAAAHZBIHRva2VuIHRoZSBmYWN0b3J5IGFjY2VwdHMgYW5kIHRoZSBkZXBvc2l0IGNhcCBpdHMgdHJlYXN1cmllcyBhcmUgYm9ybiB3aXRoCigwID0gdW5jYXBwZWQpLCBpbiB0aGUgdG9rZW4ncyBvd24gdW5pdHMuAAAAAAAAAAAACFRva2VuQ2FwAAAAAgAAAAAAAAADY2FwAAAAAAsAAAAAAAAABXRva2VuAAAAAAAAEw==",
         "AAAAAAAAASFEZXBsb3kgYSB0cmVhc3VyeSBhbmQgc2V0IGl0IHVwIOKAlCBvbmUgb3duZXIgc2lnbmF0dXJlIGZvciB0aGUgd2hvbGUgdGhpbmcuCgpPcmRlciBtYXR0ZXJzIGZvciBhdG9taWNpdHkgb25seSBpbiB0aGUgc2Vuc2UgdGhhdCBhbnkgcmVmdXNhbCAoYW4gaW5jb2hlcmVudApwb2xpY3kgaW4gdGhlIGNvbnN0cnVjdG9yLCBhbiBpbnZhbGlkIExlYXNoLCBhbiB1bmZ1bmRlZCBvd25lcikgYWJvcnRzIHRoZSBlbnRpcmUKdHJhbnNhY3Rpb246IG5vIGhhbGYtY29uZmlndXJlZCB0cmVhc3VyeSBjYW4gZXhpc3QuAAAAAAAABmNyZWF0ZQAAAAAAAQAAAAAAAAABcwAAAAAAB9AAAAAFU2V0dXAAAAAAAAABAAAAEw==",
+        "AAAAAAAAADFUaGUgdG9rZW5zIGEgdHJlYXN1cnkgZnJvbSB0aGlzIGZhY3RvcnkgbWF5IGhvbGQuAAAAAAAABnRva2VucwAAAAAAAAAAAAEAAAPqAAAAEw==",
         "AAAAAAAAAAAAAAAIcmVnaXN0cnkAAAAAAAAAAQAAABM=",
-        "AAAAAAAAAE1UaGUgZGVwb3NpdCBjYXAgZXZlcnkgdHJlYXN1cnkgZnJvbSB0aGlzIGZhY3RvcnkgaXMgYm9ybiB3aXRoICgwID0gdW5jYXBwZWQpLgAAAAAAAAtkZXBvc2l0X2NhcAAAAAAAAAAAAQAAAAs=",
-        "AAAAAAAAAPpQaW5zIHRoZSB0cmVhc3VyeSBjb2RlLCB0aGUgcmVnaXN0cnkgYW5kIHRoZSBkZXBvc2l0IGNhcC4gSW1tdXRhYmxlIGFmdGVyIGRlcGxveSAobm8Kc2V0dGVycyk6IGEgZmFjdG9yeSB0aGF0IGNvdWxkIGJlIHJlLXBvaW50ZWQgd291bGQgYmUgYSB3YXkgdG8gaGFuZCB1c2VycyBkaWZmZXJlbnQKY29kZSwgYW5kIG9uZSB3aG9zZSBjYXAgY291bGQgYmUgcmFpc2VkIHdvdWxkIG1ha2UgdGhlIGJldGEgYm91bmQgYSBwcm9taXNlIG9ubHkuAAAAAAANX19jb25zdHJ1Y3RvcgAAAAAAAAMAAAAAAAAADXRyZWFzdXJ5X3dhc20AAAAAAAPuAAAAIAAAAAAAAAAIcmVnaXN0cnkAAAATAAAAAAAAAAtkZXBvc2l0X2NhcAAAAAALAAAAAA==",
+        "AAAAAAAAAHZUaGUgZGVwb3NpdCBjYXAgYSB0cmVhc3VyeSBvZiBgdG9rZW5gIGlzIGJvcm4gd2l0aCAoMCA9IHVuY2FwcGVkKSwgb3IgYE5vbmVgIGZvciBhCnRva2VuIHRoaXMgZmFjdG9yeSBkb2VzIG5vdCBhY2NlcHQuAAAAAAALZGVwb3NpdF9jYXAAAAAAAQAAAAAAAAAFdG9rZW4AAAAAAAATAAAAAQAAA+gAAAAL",
+        "AAAAAAAAARdQaW5zIHRoZSB0cmVhc3VyeSBjb2RlLCB0aGUgcmVnaXN0cnkgYW5kIHRoZSBhY2NlcHRlZCB0b2tlbnMgd2l0aCB0aGVpciBkZXBvc2l0IGNhcHMuCkltbXV0YWJsZSBhZnRlciBkZXBsb3kgKG5vIHNldHRlcnMpOiBhIGZhY3RvcnkgdGhhdCBjb3VsZCBiZSByZS1wb2ludGVkIHdvdWxkIGJlIGEgd2F5CnRvIGhhbmQgdXNlcnMgZGlmZmVyZW50IGNvZGUsIGFuZCBvbmUgd2hvc2UgY2FwcyBjb3VsZCBiZSByYWlzZWQgd291bGQgbWFrZSB0aGUgYmV0YQpib3VuZCBhIHByb21pc2Ugb25seS4AAAAADV9fY29uc3RydWN0b3IAAAAAAAADAAAAAAAAAA10cmVhc3VyeV93YXNtAAAAAAAD7gAAACAAAAAAAAAACHJlZ2lzdHJ5AAAAEwAAAAAAAAAEY2FwcwAAA+oAAAfQAAAACFRva2VuQ2FwAAAAAA==",
         "AAAAAAAAAAAAAAANdHJlYXN1cnlfd2FzbQAAAAAAAAAAAAABAAAD7gAAACA=" ]),
       options
     )
   }
   public readonly fromJSON = {
     create: this.txFromJSON<string>,
+        tokens: this.txFromJSON<Array<string>>,
         registry: this.txFromJSON<string>,
-        deposit_cap: this.txFromJSON<i128>,
+        deposit_cap: this.txFromJSON<Option<i128>>,
         treasury_wasm: this.txFromJSON<Buffer>
   }
 }

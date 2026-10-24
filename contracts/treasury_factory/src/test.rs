@@ -44,36 +44,55 @@ struct World<'a> {
     owner: Address,
     token: Address,
     token_client: TokenClient<'a>,
+    /// A second accepted token, with a cap of its own.
+    other: Address,
     registry: Address,
     factory: TreasuryFactoryClient<'a>,
 }
 
 const OWNER_START: i128 = 1_000_000_000;
-/// The beta bound the factory under test pins on every treasury.
+/// The beta bound the factory under test pins on every treasury of `token`.
 const DEPOSIT_CAP: i128 = 500_000_000;
+/// ...and on every treasury of `other`: higher, so a test can tell the two apart.
+const OTHER_CAP: i128 = 800_000_000;
+
+/// A fresh SAC with `OWNER_START` minted to `owner`. Needs `mock_all_auths`.
+fn minted_token(env: &Env, owner: &Address) -> Address {
+    let token = env.register_stellar_asset_contract_v2(owner.clone()).address();
+    StellarAssetClient::new(env, &token).mint(owner, &OWNER_START);
+    token
+}
+
+fn treasury_wasm(env: &Env) -> BytesN<32> {
+    let hash = env.deployer().upload_contract_wasm(TREASURY_WASM);
+    assert_eq!(
+        hash,
+        BytesN::from_array(env, &TREASURY_V4_HASH),
+        "fixture is not the shipped v4 treasury"
+    );
+    hash
+}
 
 /// Needs `env.mock_all_auths()` first: the mint is admin-signed.
 fn world(env: &Env) -> World<'_> {
     let owner = Address::generate(env);
-    let sac = env.register_stellar_asset_contract_v2(owner.clone());
-    let token = sac.address();
-    StellarAssetClient::new(env, &token).mint(&owner, &OWNER_START);
+    let token = minted_token(env, &owner);
+    let other = minted_token(env, &owner);
 
-    let treasury_wasm = env.deployer().upload_contract_wasm(TREASURY_WASM);
-    assert_eq!(
-        treasury_wasm,
-        BytesN::from_array(env, &TREASURY_V4_HASH),
-        "fixture is not the shipped v4 treasury"
-    );
     let registry = env.register(REGISTRY_WASM, ());
-    let factory_id =
-        env.register(TreasuryFactory, (treasury_wasm, registry.clone(), DEPOSIT_CAP));
+    let caps = vec![
+        env,
+        TokenCap { token: token.clone(), cap: DEPOSIT_CAP },
+        TokenCap { token: other.clone(), cap: OTHER_CAP },
+    ];
+    let factory_id = env.register(TreasuryFactory, (treasury_wasm(env), registry.clone(), caps));
 
     World {
         env,
         owner,
         token: token.clone(),
         token_client: TokenClient::new(env, &token),
+        other,
         registry,
         factory: TreasuryFactoryClient::new(env, &factory_id),
     }
@@ -277,7 +296,10 @@ fn the_factory_reports_what_it_instantiates() {
     let w = world(&env);
     assert_eq!(w.factory.treasury_wasm(), BytesN::from_array(&env, &TREASURY_V4_HASH));
     assert_eq!(w.factory.registry(), w.registry);
-    assert_eq!(w.factory.deposit_cap(), DEPOSIT_CAP);
+    assert_eq!(w.factory.tokens(), vec![&env, w.token.clone(), w.other.clone()]);
+    assert_eq!(w.factory.deposit_cap(&w.token), Some(DEPOSIT_CAP));
+    assert_eq!(w.factory.deposit_cap(&w.other), Some(OTHER_CAP));
+    assert_eq!(w.factory.deposit_cap(&Address::generate(&env)), None);
 }
 
 // ---- v4 ----------------------------------------------------------------------------
@@ -307,6 +329,71 @@ fn funding_above_the_deposit_cap_aborts_the_creation() {
 
     let at_cap = w.factory.create(&setup(&w, None, DEPOSIT_CAP, false));
     assert_eq!(w.token_client.balance(&at_cap), DEPOSIT_CAP);
+}
+
+// ---- v4.1: one cap per token --------------------------------------------------------
+
+/// The cap follows the token: a fund that is over `token`'s cap is within `other`'s.
+#[test]
+fn each_token_carries_its_own_cap() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let w = world(&env);
+    let mut s = setup(&w, None, OTHER_CAP, false);
+    s.token = w.other.clone();
+
+    let treasury = w.factory.create(&s);
+
+    let cap: i128 = read(&env, &treasury, "deposit_cap", vec![&env]);
+    assert_eq!(cap, OTHER_CAP);
+    assert_eq!(TokenClient::new(&env, &w.other).balance(&treasury), OTHER_CAP);
+
+    let mut over = setup(&w, None, OTHER_CAP, false);
+    over.salt = BytesN::from_array(&env, &[9u8; 32]);
+    assert!(w.factory.try_create(&over).is_err(), "OTHER_CAP is over the first token's cap");
+}
+
+/// A token without a cap is not "uncapped": the factory refuses to make the treasury.
+#[test]
+fn a_token_the_factory_was_not_given_is_refused() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let w = world(&env);
+    let mut s = setup(&w, None, 0, false);
+    s.token = minted_token(&env, &w.owner);
+    assert!(w.factory.try_create(&s).is_err());
+}
+
+#[test]
+#[should_panic(expected = "at least one token")]
+fn a_factory_needs_at_least_one_token() {
+    let env = Env::default();
+    let registry = env.register(REGISTRY_WASM, ());
+    let none: soroban_sdk::Vec<TokenCap> = soroban_sdk::Vec::new(&env);
+    env.register(TreasuryFactory, (treasury_wasm(&env), registry, none));
+}
+
+#[test]
+#[should_panic(expected = "token listed twice")]
+fn a_token_cannot_be_given_two_caps() {
+    let env = Env::default();
+    let registry = env.register(REGISTRY_WASM, ());
+    let token = Address::generate(&env);
+    let caps = vec![
+        &env,
+        TokenCap { token: token.clone(), cap: 1 },
+        TokenCap { token, cap: 2 },
+    ];
+    env.register(TreasuryFactory, (treasury_wasm(&env), registry, caps));
+}
+
+#[test]
+#[should_panic(expected = "deposit cap must not be negative")]
+fn a_negative_cap_is_refused_at_deploy() {
+    let env = Env::default();
+    let registry = env.register(REGISTRY_WASM, ());
+    let caps = vec![&env, TokenCap { token: Address::generate(&env), cap: -1 }];
+    env.register(TreasuryFactory, (treasury_wasm(&env), registry, caps));
 }
 
 #[test]

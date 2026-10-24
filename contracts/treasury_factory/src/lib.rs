@@ -8,12 +8,16 @@
 //! and the registry require from the owner hangs off that one authorisation tree.
 //!
 //! The factory holds no funds and has no admin. It only knows which treasury code to
-//! instantiate (the wasm hash the app ships), where the registry is and the deposit cap
-//! every treasury it creates carries — all fixed at deploy time, so a factory can never be
-//! re-pointed at different code or loosened after users trusted it.
+//! instantiate (the wasm hash the app ships), where the registry is and which tokens a
+//! treasury may hold, each with the deposit cap it is born with — all fixed at deploy time,
+//! so a factory can never be re-pointed at different code or loosened after users trusted it.
 //!
 //! v4: the setup also carries the monthly budget and per-payee monthly caps, and funding
 //! goes through the treasury's capped `deposit` rather than a bare transfer.
+//!
+//! v4.1: one cap per token. A single number meant 100 XLM and 100 USDC alike, two bounds
+//! roughly six times apart in value; and a token without a cap is a token the factory
+//! refuses, so a treasury of some unknown asset cannot be created through it.
 use soroban_sdk::{
     contract, contractclient, contractimpl, contracttype, symbol_short, Address, BytesN,
     Env, Vec,
@@ -56,7 +60,7 @@ pub struct Setup {
     /// (A `Vec` rather than an `Option`: the SDK's spec cannot carry an optional struct.)
     pub leash: Vec<Leash>,
     /// Amount of `token` deposited from the owner into the treasury (0 = unfunded). Refused
-    /// as a whole if it exceeds the factory's deposit cap.
+    /// as a whole if it exceeds the token's deposit cap.
     pub fund: i128,
     /// Record the treasury under the owner in the registry (cross-device recovery).
     pub register: bool,
@@ -64,12 +68,23 @@ pub struct Setup {
     pub salt: BytesN<32>,
 }
 
+/// A token the factory accepts and the deposit cap its treasuries are born with
+/// (0 = uncapped), in the token's own units.
+#[contracttype]
+#[derive(Clone)]
+pub struct TokenCap {
+    pub token: Address,
+    pub cap: i128,
+}
+
 #[contracttype]
 #[derive(Clone)]
 enum DataKey {
     TreasuryWasm,
     Registry,
-    DepositCap,
+    /// The accepted tokens, in the order the deployer gave them.
+    Tokens,
+    DepositCap(Address),
 }
 
 /// The slice of the treasury interface the factory drives. Both calls are admin-only on
@@ -93,23 +108,43 @@ pub struct TreasuryFactory;
 
 #[contractimpl]
 impl TreasuryFactory {
-    /// Pins the treasury code, the registry and the deposit cap. Immutable after deploy (no
-    /// setters): a factory that could be re-pointed would be a way to hand users different
-    /// code, and one whose cap could be raised would make the beta bound a promise only.
-    pub fn __constructor(env: Env, treasury_wasm: BytesN<32>, registry: Address, deposit_cap: i128) {
-        if deposit_cap < 0 {
-            panic!("deposit cap must not be negative");
+    /// Pins the treasury code, the registry and the accepted tokens with their deposit caps.
+    /// Immutable after deploy (no setters): a factory that could be re-pointed would be a way
+    /// to hand users different code, and one whose caps could be raised would make the beta
+    /// bound a promise only.
+    pub fn __constructor(env: Env, treasury_wasm: BytesN<32>, registry: Address, caps: Vec<TokenCap>) {
+        if caps.is_empty() {
+            panic!("at least one token");
+        }
+        let mut tokens: Vec<Address> = Vec::new(&env);
+        for c in caps.iter() {
+            if c.cap < 0 {
+                panic!("deposit cap must not be negative");
+            }
+            if tokens.contains(&c.token) {
+                panic!("token listed twice");
+            }
+            tokens.push_back(c.token.clone());
+            env.storage()
+                .instance()
+                .set(&DataKey::DepositCap(c.token.clone()), &c.cap);
         }
         env.storage()
             .instance()
             .set(&DataKey::TreasuryWasm, &treasury_wasm);
         env.storage().instance().set(&DataKey::Registry, &registry);
-        env.storage().instance().set(&DataKey::DepositCap, &deposit_cap);
+        env.storage().instance().set(&DataKey::Tokens, &tokens);
     }
 
-    /// The deposit cap every treasury from this factory is born with (0 = uncapped).
-    pub fn deposit_cap(env: Env) -> i128 {
-        env.storage().instance().get(&DataKey::DepositCap).unwrap_or(0)
+    /// The deposit cap a treasury of `token` is born with (0 = uncapped), or `None` for a
+    /// token this factory does not accept.
+    pub fn deposit_cap(env: Env, token: Address) -> Option<i128> {
+        env.storage().instance().get(&DataKey::DepositCap(token))
+    }
+
+    /// The tokens a treasury from this factory may hold.
+    pub fn tokens(env: Env) -> Vec<Address> {
+        env.storage().instance().get(&DataKey::Tokens).unwrap()
     }
 
     pub fn treasury_wasm(env: Env) -> BytesN<32> {
@@ -132,7 +167,10 @@ impl TreasuryFactory {
         }
         let wasm: BytesN<32> = env.storage().instance().get(&DataKey::TreasuryWasm).unwrap();
         let registry: Address = env.storage().instance().get(&DataKey::Registry).unwrap();
-        let deposit_cap: i128 = env.storage().instance().get(&DataKey::DepositCap).unwrap_or(0);
+        let deposit_cap: i128 = match Self::deposit_cap(env.clone(), s.token.clone()) {
+            Some(cap) => cap,
+            None => panic!("token not accepted"),
+        };
 
         // 1. The treasury: constructor validates the policy (InvalidLimits aborts here).
         let treasury = env.deployer().with_current_contract(s.salt.clone()).deploy_v2(
