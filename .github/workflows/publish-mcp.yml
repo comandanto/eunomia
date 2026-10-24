@@ -1,12 +1,11 @@
 name: Publish eunomia-mcp
 
-# A tag `mcp-v<version>` publishes packages/mcp to npm with provenance: the package page
-# links the exact commit and workflow run that built it, signed through Sigstore. Nothing
-# is published from a laptop any more.
-#
-# One-time setup on npmjs.com (the package owner): eunomia-mcp → Settings → Trusted
-# publishing → GitHub Actions, repository eunomia-finance/eunomia, workflow publish-mcp.yml.
-# With that in place no token is stored anywhere. Until then an NPM_TOKEN secret works too.
+# A tag `mcp-v<version>` stages packages/mcp on npm through trusted publishing (OIDC): no
+# token is stored anywhere, and the release carries provenance linking the exact commit and
+# workflow run that built it. Staged, not published: it goes public only when a maintainer
+# approves it with 2FA (npmjs.com → eunomia-mcp → Staged Packages, or `npm stage approve`).
+# The trusted publisher on npmjs.com (eunomia-mcp → Settings) allows staging only, so a
+# leaked workflow cannot ship a release on its own.
 on:
   push:
     tags: ["mcp-v*"]
@@ -27,7 +26,7 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
-      # Trusted publishing needs npm 11.5 or newer.
+      # Staged publishing needs npm 11.15 or newer (and Node 22.14).
       - run: npm install -g npm@11
       - name: Tag matches package version
         run: |
@@ -36,7 +35,8 @@ jobs:
             echo "tag $GITHUB_REF_NAME does not match package.json ($want)"; exit 1
           fi
       - run: npm install
-      # prepublishOnly runs the binding and codec sync checks, the tests and the build.
-      - run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # The binding and codec sync checks, the tests and the build, run here rather than left
+      # to prepublishOnly.
+      - run: npm run prepublishOnly
+      # Provenance is added by npm itself for an OIDC publish from a public repository.
+      - run: npm stage publish --access public
