@@ -5,14 +5,14 @@ the app, the relay, the indexer and `eunomia-mcp` run on.
 
 ## Mainnet contracts
 
-Set at deploy. Until then the app refuses to build and the relay and indexer refuse to run
-(both fail closed on the empty settings below).
+Deployed 2026-10-24 by `GCTLFU5Y…A2G7B` (a key used for nothing else; it holds no role in
+any contract), for about 42 XLM in all, most of it the treasury wasm upload.
 
 | Item | Value |
 |---|---|
-| Treasury v4 wasm | `c11a5c63e610be259cdcf23d276fdf6f3069fdc6069c4d713b52d556f24238ec` (the code `web/src/lib/treasuryWasm.ts` pins; uploaded at deploy) |
-| **Treasury factory** | set at deploy → `EUNOMIA_FACTORY_ID`, `RELAY_FACTORY_ID` |
-| **Treasury registry** | set at deploy → `EUNOMIA_REGISTRY_ID`, `RELAY_ALLOWED_CONTRACTS`, the indexer's `REGISTRY_ID` |
+| Treasury v4 wasm | `c11a5c63e610be259cdcf23d276fdf6f3069fdc6069c4d713b52d556f24238ec` (the code `web/src/lib/treasuryWasm.ts` pins) — upload [`578f33b2…`](https://stellar.expert/explorer/public/tx/578f33b289e9e352488451d6fb9ce9ec1912415ed41f56487c3cf385573d6829) |
+| **Treasury factory** v4.1 | [`CBO5F4MRST2BH4W3SSXSQXKFBTK5Y5AWNTVDH47KO65MXJTBTYSFUPEB`](https://stellar.expert/explorer/public/contract/CBO5F4MRST2BH4W3SSXSQXKFBTK5Y5AWNTVDH47KO65MXJTBTYSFUPEB) — wasm `fd9ddbda…ae0a`; `web/src/networks.ts`, `RELAY_FACTORY_ID` |
+| **Treasury registry** | [`CCQQBCR55OZKAGHNIWOOX265XTYITLOAXITLTPJTZNYEOJYT2QDZTNXB`](https://stellar.expert/explorer/public/contract/CCQQBCR55OZKAGHNIWOOX265XTYITLOAXITLTPJTZNYEOJYT2QDZTNXB) — wasm `9a83b99c…514c`; `web/src/networks.ts`, `RELAY_ALLOWED_CONTRACTS`, the indexer's `REGISTRY_ID` |
 | Deposit caps (beta) | the factory's constructor, one per token: **500 XLM** and **100 USDC** (about the same in dollars on 2026-10-24); any other token is refused |
 | Passkey smart-wallet wasm | `fdefad64b96837147e1c333e51f537b696eab925e9f147e63d597c04e3c903f0` (`passkey-kit`; admitted by the relay through `RELAY_ALLOWED_WASM`) |
 | XLM (SAC) | `CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA` |

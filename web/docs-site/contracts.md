@@ -6,9 +6,9 @@ Network: **Stellar mainnet** (`Public Global Stellar Network ; September 2015`),
 
 | Contract | Address / hash |
 | --- | --- |
-| **Treasury factory** (one owner signature: deploy + rules + payees + Leash + funding + registry; it has no admin and keeps no authority over what it creates) | set at deploy — see [`DEPLOYMENT.md`](https://github.com/eunomia-finance/eunomia/blob/main/DEPLOYMENT.md) |
+| **Treasury factory** (one owner signature: deploy + rules + payees + Leash + funding + registry; it has no admin and keeps no authority over what it creates) | [`CBO5F4MR…FUPEB`](https://stellar.expert/explorer/public/contract/CBO5F4MRST2BH4W3SSXSQXKFBTK5Y5AWNTVDH47KO65MXJTBTYSFUPEB) |
 | **Treasury v4 wasm** (what the factory instantiates) | `c11a5c63e610be259cdcf23d276fdf6f3069fdc6069c4d713b52d556f24238ec` |
-| **Treasury Registry** (cross-device backup) | set at deploy — see [`DEPLOYMENT.md`](https://github.com/eunomia-finance/eunomia/blob/main/DEPLOYMENT.md) |
+| **Treasury Registry** (cross-device backup) | [`CCQQBCR5…DZTNXB`](https://stellar.expert/explorer/public/contract/CCQQBCR55OZKAGHNIWOOX265XTYITLOAXITLTPJTZNYEOJYT2QDZTNXB) |
 | **XLM** (Stellar Asset Contract) | `CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA` |
 | **Circle USDC** (asset contract of `USDC:GA5ZSEJY…KZVN`) | `CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75` |
 

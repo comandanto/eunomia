@@ -31,9 +31,9 @@ export interface NetworkConfig {
   simulationSource: string;
 }
 
-/** Mainnet. The empty fields are not defaults: a build refuses to run until each is set from
- *  the environment (EUNOMIA_RPC_URL, EUNOMIA_FACTORY_ID, EUNOMIA_REGISTRY_ID), or here once
- *  the contracts are deployed. */
+/** Mainnet. The empty RPC is not a default: it depends on the host the build is for, and a
+ *  build refuses to run until EUNOMIA_RPC_URL sets it. The factory and registry can be
+ *  overridden from the environment (EUNOMIA_FACTORY_ID, EUNOMIA_REGISTRY_ID). */
 export const PUBNET: NetworkConfig = {
   name: "pubnet",
   label: "Mainnet",
@@ -49,8 +49,10 @@ export const PUBNET: NetworkConfig = {
   // Circle's USDC.
   usdcSac: "CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75",
   usdcIssuer: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
-  factoryId: "",
-  registryId: "",
+  // Deployed 2026-10-24 (DEPLOYMENT.md): factory v4.1 with 500 XLM / 100 USDC caps, and the
+  // registry that checks ownership. Both have no admin.
+  factoryId: "CBO5F4MRST2BH4W3SSXSQXKFBTK5Y5AWNTVDH47KO65MXJTBTYSFUPEB",
+  registryId: "CCQQBCR55OZKAGHNIWOOX265XTYITLOAXITLTPJTZNYEOJYT2QDZTNXB",
   // Circle's USDC issuer: an account that exists for as long as the USDC this app holds does.
   simulationSource: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
 };

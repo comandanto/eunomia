@@ -23,16 +23,16 @@ describe("the network table", () => {
 });
 
 describe("resolveNetwork", () => {
-  it("refuses a build with nothing set, naming every missing piece", () => {
-    let message = "";
-    try {
-      resolveNetwork({});
-    } catch (e) {
-      message = (e as Error).message;
-    }
-    for (const k of ["EUNOMIA_RPC_URL", "EUNOMIA_FACTORY_ID", "EUNOMIA_REGISTRY_ID"]) {
-      expect(message).toContain(k);
-    }
+  it("refuses a build without the RPC, which depends on the host it is for", () => {
+    expect(() => resolveNetwork({})).toThrow(/EUNOMIA_RPC_URL/);
+  });
+
+  it("builds against the deployed factory and registry unless told otherwise", () => {
+    const net = resolveNetwork({ EUNOMIA_RPC_URL: "https://app.example.com/api/rpc" });
+    expect(net.factoryId).toBe(PUBNET.factoryId);
+    expect(net.registryId).toBe(PUBNET.registryId);
+    expect(PUBNET.factoryId).toMatch(/^C[A-Z2-7]{55}$/);
+    expect(PUBNET.registryId).toMatch(/^C[A-Z2-7]{55}$/);
   });
 
   it("takes the settings from the environment", () => {

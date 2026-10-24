@@ -41,9 +41,9 @@ mainnet, in beta**: every treasury carries a deposit cap fixed at creation.
 
 | Contract | Address |
 |---|---|
-| Treasury factory (one owner signature: deploy + policy + payees + Leash + funding + registry) | set at deploy — `DEPLOYMENT.md` |
+| Treasury factory (one owner signature: deploy + policy + payees + Leash + funding + registry) | `CBO5F4MRST2BH4W3SSXSQXKFBTK5Y5AWNTVDH47KO65MXJTBTYSFUPEB` |
 | Treasury wasm v4 (what the factory instantiates; deploy your own from this hash) | `c11a5c63e610be259cdcf23d276fdf6f3069fdc6069c4d713b52d556f24238ec` |
-| Treasury Registry (cross-device discovery) | set at deploy — `DEPLOYMENT.md` |
+| Treasury Registry (cross-device discovery) | `CCQQBCR55OZKAGHNIWOOX265XTYITLOAXITLTPJTZNYEOJYT2QDZTNXB` |
 | Circle USDC (SAC of `USDC:GA5ZSEJY…KZVN`) — the token of a USDC treasury | `CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75` |
 | XLM (SAC) — the token of an XLM treasury | `CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA` |
 

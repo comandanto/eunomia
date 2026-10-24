@@ -28,22 +28,22 @@
     "bindings": [{ "name": "RELAY_BUDGET", "class_name": "RelayBudget" }]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RelayBudget"] }],
-  // Mainnet only. The empty values are set at deploy, once the contracts exist and the daily
-  // budget is decided; until then the relay answers 503 rather than guess (fails closed).
+  // Mainnet only. Without any of these, or without its secrets, the relay answers 503 rather
+  // than guess (fails closed).
   // Optional: RELAY_MAX_FEE_XLM (default 1) and RELAY_MIN_BALANCE_XLM (default 5).
   // Secrets (wrangler secret put …): RELAY_SECRET, the fee account; RELAY_RPC_URL, the RPC
   // provider's URL — it carries the account key, so it is never a var. The relay submits
   // through it and /api/rpc forwards the browser's calls to it.
   "vars": {
     "RELAY_NETWORK": "pubnet",
-    // the treasury factory, as EUNOMIA_FACTORY_ID
-    "RELAY_FACTORY_ID": "",
-    // the registry, as EUNOMIA_REGISTRY_ID
-    "RELAY_ALLOWED_CONTRACTS": "",
+    // the treasury factory and the registry (src/networks.ts, DEPLOYMENT.md)
+    "RELAY_FACTORY_ID": "CBO5F4MRST2BH4W3SSXSQXKFBTK5Y5AWNTVDH47KO65MXJTBTYSFUPEB",
+    "RELAY_ALLOWED_CONTRACTS": "CCQQBCR55OZKAGHNIWOOX265XTYITLOAXITLTPJTZNYEOJYT2QDZTNXB",
     // the passkey smart wallet (config.ts WALLET_WASM_HASH): creating one is a deploy the
     // relay pays for. The treasury wasm is admitted in code (relayGuard.allowedWasmHashes).
     "RELAY_ALLOWED_WASM": "fdefad64b96837147e1c333e51f537b696eab925e9f147e63d597c04e3c903f0",
-    "RELAY_DAILY_BUDGET_XLM": ""
+    // decided 2026-10-24; raise it as passkey users arrive
+    "RELAY_DAILY_BUDGET_XLM": "20"
   },
   "observability": { "enabled": true }
 }
