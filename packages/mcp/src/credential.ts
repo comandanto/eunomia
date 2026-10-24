@@ -2,7 +2,7 @@
 // owner authorises with set_session (the "Leash"). The secret never leaves this machine;
 // the owner only ever sees the public key. Bounded by design — cap + expiry + instant
 // revoke — so a leaked file is survivable, which is also why it is plain JSON at 0600.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { Keypair, StrKey } from "@stellar/stellar-sdk";
 import type { NetworkName } from "./format.js";
@@ -46,6 +46,10 @@ export function saveCredential(home: string, c: Credential, opts: { force?: bool
   }
   mkdirSync(dirname(p), { recursive: true, mode: 0o700 });
   writeFileSync(p, JSON.stringify(c, null, 2), { mode: 0o600 });
+  // `mode` applies only when the file is created: a --force overwrite kept whatever the old
+  // file allowed (review L7). Windows ignores POSIX modes; there the user profile's ACL is
+  // what protects the file.
+  chmodSync(p, 0o600);
   return p;
 }
 

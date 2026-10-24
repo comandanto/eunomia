@@ -3,7 +3,7 @@
 // character pasted along, a JSON comma lost. The file is merged, never replaced — other
 // servers in it stay as they were — and the previous version is kept beside it as .bak.
 import { execFileSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -76,7 +76,11 @@ export function writeClientConfig(client: ClientName, env: Record<string, string
   if (existing !== null) {
     backup = `${path}.bak`;
     copyFileSync(path, backup);
+    chmodSync(backup, 0o600);
   }
-  writeFileSync(path, next);
+  writeFileSync(path, next, { mode: 0o600 });
+  // The entry carries EUNOMIA_RPC_URL, which for a keyed provider is a credential, and the
+  // .bak beside it may hold other servers' secrets: owner-only, both (review L7).
+  chmodSync(path, 0o600);
   return { client, where: path, ...(backup ? { backup } : {}) };
 }

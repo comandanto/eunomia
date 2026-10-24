@@ -102,10 +102,33 @@ was a design change and landed 2026-08-06.
 | M4 | Medium | With the reputation gate on, whoever controls the registry can authorize payees without the owner's signature, at the same limits as a whitelisted one | ⏳ Open — needs a separate, lower cap for reputation-authorized payees |
 | H1 | High | ZK attestation is **not bound to the treasury**: no public signal identifies it, none derives from chain state, the witness is prover-chosen and `verify` needs no auth → anyone can mint a valid `ComplianceAttested` for any period | ✅ Fixed 2026-08-06 — the verifier is now multi-tenant and reads limits, payee root and the period total from the treasury itself; the circuit binds the batch to that total (`total === periodSpent`); only the treasury admin can attest; periods must be closed and strictly advancing. Proven on testnet: a valid proof of a fabricated batch is rejected with `Error(Contract, #9)` |
 
-**Not yet through an audit round:** the treasury factory (2026-09-16) and `eunomia-mcp`
-(2026-09-14 → 09-18) shipped after the third round. They carry their own tests — including
-live runs before mainnet and against production — but no independent review has looked at
-them yet; until one has, the beta's deposit cap stays.
+A fourth round (agent-assisted, **2026-10-20 → 22**, before mainnet) took in what had shipped
+since: the treasury factory, `eunomia-mcp`, the relay, the passkey signing path, the
+Supabase layer and the Cloudflare headers. **No critical findings and no path to drain a
+treasury.** Its IDs restart at H1/M1/L1; the commits name them as "review M1" and so on.
+
+| ID | Severity | Finding | Status |
+|----|----------|---------|--------|
+| H1 | High | A budget-request link could be signed by any key, and the card approved what it asked for | ✅ Fixed 2026-10-21 — an unfamiliar key is approved only after the owner pastes the key their agent printed; full addresses; no payees approved from a link; a signed 24h expiry |
+| M1 | Medium | The passkey signs auth entries that come from RPC simulation, which the prompt cannot show: a hostile RPC could add one | ✅ Fixed 2026-10-22 — every passkey path holds the entries to the host function the app built before signing (`authCheck.ts`) |
+| M2 | Medium | Nothing bounded what the relay spends on fees | ✅ Fixed 2026-10-22 — per-transaction cap, balance floor, a daily budget held in one Durable Object, a per-wallet limiter |
+| M3 | Medium | The relay admitted any auth entry, including delegates and ones authorising as the relay key | ✅ Fixed 2026-10-21 — address credentials only, never the relay's own |
+| M4 | Medium | `call_service` could be pointed at private and loopback hosts (SSRF) | ✅ Fixed 2026-10-21 (https public hosts only, no redirects); rechecked at connect time 2026-10-23 |
+| M5 | Medium | The network was chosen by editing a file, and the demo agent key could ship in a mainnet bundle | ✅ Fixed 2026-10-23 — the build chooses the network; since 2026-10-24 there is only mainnet and the demo is gone |
+| L1 | Low | `Payee`, `PayeeCap` and `TaskSpent` are never TTL-extended after a write | 🟡 Accepted for the beta — since protocol 23 an archived entry in a call's footprint is restored by that call, for a fee, so nothing is lost or stuck. `extend_ttl` on write and a public `bump()` go into the next treasury version |
+| L2 | Low | `create_escrow` extends the entry's TTL to `MAX_TTL_LEDGERS`, which can exceed the network maximum: an escrow about six months out traps (refused, nothing lost) | 🟡 Open for the next treasury version (clamp to `max_ttl()`). Neither the app nor `eunomia-mcp` creates escrows |
+| L3 | Low | The deposit cap bounds the balance, not deposits: anyone can transfer tokens in directly and push the owner's `deposit` over the cap | 🟡 Documented below; the owner makes room with `admin_withdraw` |
+| L4 | Low | The factory salt is not bound to the owner: someone who sees a salt first can take that treasury address | 🟡 Open for the next factory (`sha256(owner ‖ salt)`). Refusal only — the victim's `create` aborts as a whole, nothing was funded in advance, a new salt works |
+| L5 | Low | A mainnet relay admitted testnet-era treasury hashes | ✅ Fixed 2026-10-21 |
+| L6 | Low | The reputation gate trusts an admin-chosen oracle; a farmed score admits a non-whitelisted payee | 🟡 Same as M4 above: the gate is off unless the owner turns it on, and the mainnet app does not offer it |
+| L7 | Low | The agent credential's `0600` applied only at creation; `init`'s client config (which carries `EUNOMIA_RPC_URL`) and its `.bak` were world-readable | ✅ Fixed 2026-10-24 — chmod `0600` after every write. Windows ignores POSIX modes; the profile ACL protects the files there |
+| L8 | Low | `activity` is anon-insertable and publicly readable, so it is forgeable and links wallets to treasuries | 🟡 By design, documented: it is the app's own log, not evidence; usage is counted from the chain (`chain_events`, service-role only). The wallet–treasury link is public on chain anyway (`get_config`). All its check constraints are validated |
+| L9 | Low | The CSP allowed `*.supabase.co` and `*.stellar.org` | ✅ Fixed 2026-10-24 — exact hosts from the build (the app's own RPC, Horizon, the Supabase project) and `Cross-Origin-Opener-Policy`. `img-src https:` and inline styles stay: wallet icons come from the WalletConnect registry, and React writes style attributes |
+| L10 | Info | Semantics: the window holds spend 24–25h; refunded escrows do not give back window or cap allowance; old month buckets may need a restore | ℹ️ Conservative by design; documented |
+
+Written after the fourth round and not yet reviewed: factory v4.1 (a deposit cap per token)
+and the registry's owner check, both 2026-10-24. Until an independent audit, the beta's
+deposit caps stay.
 
 ## Known limitations (honest scope)
 
@@ -114,6 +137,11 @@ them yet; until one has, the beta's deposit cap stays.
   upgrade entrypoint**: an upgradeable treasury would turn "the contract enforces the
   rules" into "trust the admin". The exit story is pause + withdraw + deploy a new
   treasury (v3 wasm).
+- **The deposit cap bounds the balance, not what was deposited** (fourth round, L3). No
+  contract can refuse an incoming token transfer, so anyone can send tokens straight to a
+  treasury: they count toward the cap, and can push it to the point where the owner's own
+  `deposit` is refused. Nothing is lost — the owner `admin_withdraw`s the excess to make
+  room. The cap is a bound on what the beta holds, not a filter on who funds it.
 - **The agent's key is a file on the agent's machine.** `eunomia-mcp` keeps it under
   `~/.eunomia/` (mode 0600) — bounded by design (spend cap + expiry + instant revoke), so a
   leak is survivable, but whoever holds it can spend up to the Leash's cap until the owner

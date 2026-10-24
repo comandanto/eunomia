@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, statSync } from "node:fs";
+import { chmodSync, mkdtempSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Keypair } from "@stellar/stellar-sdk";
@@ -29,6 +29,16 @@ test("create → save → load round-trips and refuses to overwrite", () => {
   saveCredential(home, replaced, { force: true });
   assert.deepEqual(loadCredential(home, "pubnet", T), replaced);
   if (process.platform !== "win32") assert.equal(statSync(p).mode & 0o777, 0o600);
+});
+
+// Review L7: `mode` only applies when a file is created, so a --force overwrite of a file
+// someone had opened up kept its looser permissions.
+test("a --force overwrite tightens the file back to owner-only", { skip: process.platform === "win32" }, () => {
+  const home = tmp();
+  const p = saveCredential(home, createCredential("pubnet", T));
+  chmodSync(p, 0o644);
+  saveCredential(home, createCredential("pubnet", T), { force: true });
+  assert.equal(statSync(p).mode & 0o777, 0o600);
 });
 
 test("createCredential rejects a non-contract id before generating anything", () => {

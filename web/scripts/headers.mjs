@@ -33,18 +33,22 @@ export function inlineScriptHashes(html) {
 
 const hashes = [...new Set(htmlFiles(DIST).flatMap((f) => inlineScriptHashes(readFileSync(f, "utf8"))))];
 
-// The RPC the bundle was built against, written by vite.config.ts beside it. It is a pinned
-// provider, not under *.stellar.org.
+// The origins the bundle was built against, written by vite.config.ts beside it. Named
+// exactly, not by wildcard (review L9): `*.supabase.co` would let an injected script post to
+// anyone's Supabase project, `*.stellar.org` to any host under it.
 const build = JSON.parse(readFileSync(join(DIST, "build-info.json"), "utf8"));
-const rpcOrigin = /\.stellar\.org$/.test(new URL(build.rpcOrigin).hostname) ? [] : [build.rpcOrigin];
+const supabase = build.supabaseOrigin
+  ? [build.supabaseOrigin, build.supabaseOrigin.replace(/^https:/, "wss:")]
+  : [];
 
 // Every origin the app talks to, and why. Anything not here is refused by the browser.
 const connect = [
-  "'self'",
-  "https://*.stellar.org", // Horizon (account balances)
-  ...rpcOrigin, // the pinned RPC
-  "https://*.supabase.co", // activity + funnel tables
-  "wss://*.supabase.co",
+  ...new Set([
+    "'self'",
+    build.rpcOrigin, // the RPC: this app's own /api/rpc in a deployed build
+    build.horizonOrigin, // Horizon (account balances)
+  ]),
+  ...supabase, // activity + funnel tables, and their realtime channel
   "https://*.walletconnect.org", // WalletConnect v2 (mobile wallets)
   "wss://*.walletconnect.org",
   "https://*.walletconnect.com",
@@ -77,6 +81,7 @@ const headers = `/*
   Referrer-Policy: strict-origin-when-cross-origin
   Strict-Transport-Security: max-age=31536000; includeSubDomains
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+  Cross-Origin-Opener-Policy: same-origin-allow-popups
 `;
 
 writeFileSync(join(DIST, "_headers"), headers);

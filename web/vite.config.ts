@@ -4,10 +4,17 @@ import { loadEnv, type Plugin } from 'vite'
 import { configDefaults, defineConfig } from 'vitest/config'
 import { STAND_IN_ENV, resolveNetwork, type NetworkConfig } from './src/networks'
 
-/** Records which network the bundle was built for, next to the bundle. check:no-secrets and
- *  headers.mjs read this rather than any source file, so they judge what was built. */
-function buildInfo(net: NetworkConfig): Plugin {
-  const info = { network: net.name, rpcOrigin: new URL(net.rpcUrl).origin }
+/** Records which network the bundle was built for, and every origin it calls, next to the
+ *  bundle. check:no-secrets and headers.mjs read this rather than any source file, so they
+ *  judge what was built — and the CSP can name hosts instead of wildcards (review L9). */
+function buildInfo(net: NetworkConfig, supabaseUrl: string | undefined): Plugin {
+  const info = {
+    network: net.name,
+    rpcOrigin: new URL(net.rpcUrl).origin,
+    horizonOrigin: new URL(net.horizonUrl).origin,
+    // null when the build has no Supabase project: logging no-ops and the CSP allows none
+    supabaseOrigin: supabaseUrl ? new URL(supabaseUrl.trim()).origin : null,
+  }
   return {
     name: 'eunomia-build-info',
     apply: 'build',
@@ -24,9 +31,10 @@ export default defineConfig(({ mode }) => {
   // on stand-in values — a real setting still wins over them.
   const env = loadEnv(mode, process.cwd(), 'EUNOMIA_')
   const net = resolveNetwork(mode === 'test' ? { ...STAND_IN_ENV, ...env } : env)
+  const supabaseUrl = loadEnv(mode, process.cwd(), 'VITE_SUPABASE_URL').VITE_SUPABASE_URL
 
   return {
-    plugins: [react(), buildInfo(net)],
+    plugins: [react(), buildInfo(net, supabaseUrl)],
     define: {
       global: 'globalThis',
       __EUNOMIA_NET__: JSON.stringify(net),
