@@ -2,28 +2,23 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { homeDir, resolveNetwork } from "./network.js";
 
-test("defaults to testnet with the public RPC and friendbot", () => {
-  const n = resolveNetwork({});
-  assert.equal(n.name, "testnet");
-  assert.equal(n.rpcUrl, "https://soroban-testnet.stellar.org");
-  assert.equal(n.passphrase, "Test SDF Network ; September 2015");
-  assert.equal(n.friendbot, "https://friendbot.stellar.org");
-});
-
-test("EUNOMIA_RPC_URL overrides the preset RPC", () => {
-  assert.equal(resolveNetwork({ EUNOMIA_RPC_URL: " https://rpc.example " }).rpcUrl, "https://rpc.example");
-});
-
-test("EUNOMIA_NETWORK=pubnet requires an explicit RPC and has no friendbot", () => {
-  assert.throws(() => resolveNetwork({ EUNOMIA_NETWORK: "pubnet" }), /EUNOMIA_RPC_URL/);
-  const n = resolveNetwork({ EUNOMIA_NETWORK: "pubnet", EUNOMIA_RPC_URL: "https://rpc.example" });
+test("runs on mainnet, through the RPC the operator names", () => {
+  assert.throws(() => resolveNetwork({}), /EUNOMIA_RPC_URL/);
+  const n = resolveNetwork({ EUNOMIA_RPC_URL: " https://rpc.example " });
+  assert.equal(n.name, "pubnet");
   assert.equal(n.rpcUrl, "https://rpc.example");
   assert.equal(n.passphrase, "Public Global Stellar Network ; September 2015");
-  assert.equal(n.friendbot, undefined);
 });
 
-test("unknown network is rejected; EUNOMIA_HOME overrides ~/.eunomia", () => {
-  assert.throws(() => resolveNetwork({ EUNOMIA_NETWORK: "futurenet" }), /Unknown EUNOMIA_NETWORK/);
+test("EUNOMIA_NETWORK may say pubnet, and nothing else", () => {
+  assert.equal(resolveNetwork({ EUNOMIA_NETWORK: "pubnet", EUNOMIA_RPC_URL: "https://rpc.example" }).name, "pubnet");
+  // A client config written for another network fails here rather than signing on mainnet.
+  for (const name of ["testnet", "futurenet"]) {
+    assert.throws(() => resolveNetwork({ EUNOMIA_NETWORK: name, EUNOMIA_RPC_URL: "https://rpc.example" }), /Unknown EUNOMIA_NETWORK/);
+  }
+});
+
+test("EUNOMIA_HOME overrides ~/.eunomia", () => {
   assert.equal(homeDir({ EUNOMIA_HOME: "/x" }), "/x");
   assert.match(homeDir({}), /\.eunomia$/);
 });

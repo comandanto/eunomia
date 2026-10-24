@@ -15,8 +15,6 @@ import { decodeBudgetRequest, type BudgetRequest } from "../lib/budgetRequestCod
 import { Client } from "../lib/treasuryClient";
 import { useTreasury } from "../state/useTreasury";
 
-const APP_NETWORK = NETWORK_PASSPHRASE.startsWith("Public") ? "pubnet" : "testnet";
-
 /** The request carried in this page's URL, if any. */
 function budgetRequestFromUrl(search = window.location.search): ReturnType<typeof decodeBudgetRequest> | null {
   const params = new URLSearchParams(search);
@@ -38,7 +36,8 @@ export default function BudgetRequestCard({ onDone }: { onDone: () => void }) {
   const [err, setErr] = useState("");
 
   const r: BudgetRequest | null = parsed?.request ?? null;
-  const usable = !!parsed?.verified && !!r && r.network === APP_NETWORK && r.treasury === t.treasuryId;
+  // A verified link is a pubnet one: the codec refuses any other network.
+  const usable = !!parsed?.verified && !!r && r.treasury === t.treasuryId;
 
   // Which of the named payees the treasury already pays — a budget does not approve them.
   useEffect(() => {
@@ -63,9 +62,7 @@ export default function BudgetRequestCard({ onDone }: { onDone: () => void }) {
 
   const problem = !parsed.verified
     ? `This link does not verify: ${parsed.problems.join("; ")}.`
-    : r && r.network !== APP_NETWORK
-      ? `This request is for ${r.network === "pubnet" ? "mainnet" : "testnet"}; this app runs on ${APP_NETWORK === "pubnet" ? "mainnet" : "testnet"}.`
-      : r && r.treasury !== t.treasuryId
+    : r && r.treasury !== t.treasuryId
         ? `This request is for treasury ${r.treasury}. Open that treasury from the switcher, then this card returns.`
         : "";
 

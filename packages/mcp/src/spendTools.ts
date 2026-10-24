@@ -56,10 +56,7 @@ export function registerSpendTools(server: McpServer, ctx: ServerContext): void 
         return ok({
           total: found.total,
           services: found.routes,
-          note:
-            ctx.net.name === "pubnet"
-              ? "Pay with call_service (it funds nothing by itself — fund_float first). Every route above settles to its payTo; the owner approves that address once."
-              : "These routes are on Stellar mainnet. This server runs on testnet, so they can be browsed but not paid from here.",
+          note: "Pay with call_service (it funds nothing by itself — fund_float first). Every route above settles to its payTo; the owner approves that address once.",
         });
       } catch (e) {
         return fail(`find_services failed: ${errText(e)}`);

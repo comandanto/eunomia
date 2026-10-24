@@ -7,37 +7,24 @@ everything outside your rules is refused by the contract, not by the agent's goo
 The agent's key is made **on the agent's machine and never leaves it**. You, the owner, sign
 exactly one thing: a spending cap and a deadline for that key's public half.
 
-## See it first, without setting anything up
-
-If you'd rather watch the arrangement work before wiring your own agent into it: start a Leash
-without pasting a key (the **Start Leash** button with the key field empty) and the app keeps
-one on this device. **Agent → Run the agent** then does three real transactions in a row,
-signed by that key, with no prompt to you:
-
-1. it pays a payee you approved;
-2. it tries an address you never approved, and the contract refuses it with its own error code;
-3. it files that refusal as a request on its own Stellar account — which appears under
-   **Waiting for you**, with the one on-chain action that resolves it.
-
-Both decisions land in your ledger. That is the whole product in about forty seconds, and it
-is exactly what an external agent does through the tools below.
-
 ## Three steps
 
 **1 · On the agent's machine — make its key.**
 
 ```bash
-npx -y eunomia-mcp init --treasury <your treasury id>
+EUNOMIA_RPC_URL=<a Stellar mainnet RPC> npx -y eunomia-mcp init --treasury <your treasury id>
 ```
 
 You don't have to type the id: the app prints this command with it filled in — on the
 **Agent** page, and on the setup screen under *+ Connect an agent now*. (During setup the
 treasury doesn't exist yet. Its address follows from a salt the form draws when it opens, so
 the app can name it in advance — and one signature then creates the treasury *and* puts the
-agent on its Leash.)
+agent on its Leash.) `EUNOMIA_RPC_URL` is required: there is no public mainnet default, so
+name a provider you trust ([the list](https://developers.stellar.org/docs/data/apis/rpc/providers)).
 
-The command prints the **agent public key** and the config for your MCP client. On testnet it
-also funds the key, which pays its own transaction fees.
+The command prints the **agent public key** and the config for your MCP client. The key pays
+its own transaction fees, so send its account ~3 XLM, then run `npx -y eunomia-mcp
+trustline` so it can hold USDC.
 
 **2 · In the app — authorise it.** Paste the public key, set a cap and a duration,
 **Authorise agent**. One signature. *Revoke Leash* on the same page ends it instantly.
@@ -48,12 +35,12 @@ with your treasury id (56 characters, starts with C).
 
 ```bash
 # Claude Code
-claude mcp add eunomia -e EUNOMIA_TREASURY=<C…> -e EUNOMIA_NETWORK=testnet -- npx -y eunomia-mcp
+claude mcp add eunomia -e EUNOMIA_TREASURY=<C…> -e EUNOMIA_RPC_URL=<https://…> -- npx -y eunomia-mcp
 ```
 
 ```json
 { "mcpServers": { "eunomia": { "command": "npx", "args": ["-y", "eunomia-mcp"],
-  "env": { "EUNOMIA_TREASURY": "<C…>", "EUNOMIA_NETWORK": "testnet" } } } }
+  "env": { "EUNOMIA_TREASURY": "<C…>", "EUNOMIA_RPC_URL": "<https://…>" } } } }
 ```
 
 Check it: `npx -y eunomia-mcp status --treasury <C…>` — `canSpend: true` with
@@ -81,9 +68,9 @@ Check it: `npx -y eunomia-mcp status --treasury <C…>` — `canSpend: true` wit
 }
 ```
 
-That is from a real run: a treasury funded with TRY, an agent started from an empty directory
-with the published package, [a payment to the approved payee that went through](https://stellar.expert/explorer/testnet/tx/55e1d57ac10b71b88f12f7403efadcc8c44a6b46209f86759293616f154a6bfe)
-and this one, to a stranger, that did not.
+That is the shape of a real run: an agent started from an empty directory with the published
+package, a payment to the approved payee that went through, and this one, to a stranger,
+that did not.
 
 Full reference — environment variables, the CLI, the SDK:
 [`packages/mcp/README.md`](https://github.com/eunomia-finance/eunomia/blob/main/packages/mcp/README.md).

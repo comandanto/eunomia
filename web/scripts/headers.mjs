@@ -6,8 +6,8 @@
 // whenever the docs do. So they are read from the built HTML here, after `vite build`, and the
 // policy always matches the files it ships with.
 //
-// Vercel (testnet, until the move) keeps its own headers in vercel.json; this file is the
-// Cloudflare one.
+// Vercel (until the move) keeps its own headers in vercel.json; this file is the Cloudflare
+// one.
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -33,17 +33,16 @@ export function inlineScriptHashes(html) {
 
 const hashes = [...new Set(htmlFiles(DIST).flatMap((f) => inlineScriptHashes(readFileSync(f, "utf8"))))];
 
-// The network the bundle was built for, written by vite.config.ts beside it.
+// The RPC the bundle was built against, written by vite.config.ts beside it. It is a pinned
+// provider, not under *.stellar.org.
 const build = JSON.parse(readFileSync(join(DIST, "build-info.json"), "utf8"));
-const testnet = build.network === "testnet";
-// A mainnet build talks to a pinned RPC provider, which is not under *.stellar.org.
 const rpcOrigin = /\.stellar\.org$/.test(new URL(build.rpcOrigin).hostname) ? [] : [build.rpcOrigin];
 
 // Every origin the app talks to, and why. Anything not here is refused by the browser.
 const connect = [
   "'self'",
-  "https://*.stellar.org", // Soroban RPC, Horizon, friendbot (testnet and mainnet)
-  ...rpcOrigin, // the pinned mainnet RPC
+  "https://*.stellar.org", // Horizon (account balances)
+  ...rpcOrigin, // the pinned RPC
   "https://*.supabase.co", // activity + funnel tables
   "wss://*.supabase.co",
   "https://*.walletconnect.org", // WalletConnect v2 (mobile wallets)
@@ -52,7 +51,6 @@ const connect = [
   "wss://*.walletconnect.com",
   "https://*.reown.com",
   "https://*.web3modal.org",
-  ...(testnet ? ["https://tr-mock-anchor.fly.dev"] : []), // the TRY → USDC anchor leg (testnet sandbox)
   "https://cloudflareinsights.com", // Web Analytics beacon
 ];
 

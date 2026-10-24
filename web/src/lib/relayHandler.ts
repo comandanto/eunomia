@@ -8,12 +8,12 @@
 // say over what the transaction may do. The URL is public, so every request is admitted only
 // after the server decodes what the call actually is; a caller's claim is never trusted.
 //
-// Mainnet differs from testnet in what it will pay for, not in how: no native-XLM transfers
-// (a v4 treasury is funded through its own `deposit`, admitted by wasm), the factory comes
-// from configuration, and the limiters and a daily fee budget are required — on mainnet the
-// fee is real money. Every transaction is priced before it is sent and refused when it costs
-// more than one call should, would take the day past its budget, or would leave the fee
-// account below its floor.
+// What it pays for: the factory (named in configuration), the contracts the env lists, and
+// treasuries and wallets running code we ship (admitted by wasm). Never a native-XLM transfer:
+// a treasury is funded through its own `deposit`. The fee is real money, so the limiters and a
+// daily fee budget are required, and every transaction is priced before it is sent and
+// refused when it costs more than one call should, would take the day past its budget, or
+// would leave the fee account below its floor.
 //
 // Explicit .js extensions throughout: see the note in relayGuard.ts.
 import { Address, Keypair, rpc, xdr } from "@stellar/stellar-sdk";
@@ -21,24 +21,22 @@ import { classifyHostFunction, hostFunctionFromEnvelope } from "./hostFunction.j
 import type { FeeBudget } from "./relayBudget.js";
 import { allowedWasmHashes, authEntriesAreSafe, isRelayAllowed } from "./relayGuard.js";
 import { submitEnvelope, submitHostFunction } from "./relaySubmit.js";
-import { LEGACY_TREASURY_FACTORY_IDS, TREASURY_FACTORY_ID, TREASURY_WASM_HASH } from "./treasuryWasm.js";
 
 export interface RelayEnv {
-  /** testnet (default) | pubnet */
+  /** pubnet, the only network; anything else is refused rather than guessed at */
   RELAY_NETWORK?: string;
-  /** the fee account; on testnet the faucet's dispenser key doubles as it */
+  /** the fee account */
   RELAY_SECRET?: string;
-  DISPENSER_SECRET?: string;
   RELAY_RPC_URL?: string;
   RELAY_ALLOWED_CONTRACTS?: string;
   RELAY_ALLOWED_WASM?: string;
-  /** pubnet: the treasury factory to admit (testnet's is built in) */
+  /** the treasury factory to admit */
   RELAY_FACTORY_ID?: string;
-  /** the most the relay spends on fees in one UTC day, in XLM; required on pubnet */
+  /** the most the relay spends on fees in one UTC day, in XLM; required */
   RELAY_DAILY_BUDGET_XLM?: string;
   /** the most one transaction may cost, in XLM (default 1) */
   RELAY_MAX_FEE_XLM?: string;
-  /** below this balance the fee account stops sponsoring, in XLM (pubnet default 5) */
+  /** below this balance the fee account stops sponsoring, in XLM (default 5) */
   RELAY_MIN_BALANCE_XLM?: string;
 }
 
@@ -47,7 +45,7 @@ export interface RateLimiter {
   limit(opts: { key: string }): Promise<{ success: boolean }>;
 }
 
-/** What the host wires in around the handler. On pubnet all three are required. */
+/** What the host wires in around the handler. All three are required. */
 export interface RelayGuards {
   /** per client IP */
   limiter?: RateLimiter;
@@ -58,15 +56,13 @@ export interface RelayGuards {
 }
 
 export interface RelayNetwork {
-  name: "testnet" | "pubnet";
+  name: "pubnet";
   passphrase: string;
   rpcUrl: string;
   /** contracts admitted by address */
   contracts: string[];
-  /** whether the limiters and the budget must be present before anything is sponsored */
-  requiresLimiter: boolean;
-  /** stroops; null means no daily total (testnet only) */
-  dailyBudget: bigint | null;
+  /** stroops */
+  dailyBudget: bigint;
   /** stroops */
   maxTxFee: bigint;
   /** stroops; 0 means no floor */
@@ -81,13 +77,6 @@ export const clean = (v: string | undefined): string => (v ?? "").replace(/[^\x2
 
 const csv = (v: string | undefined): string[] =>
   clean(v).split(",").map((s) => s.trim()).filter(Boolean);
-
-// The native XLM SAC on testnet. This is not configuration: a testnet treasury holds XLM, and
-// both funding one and paying out of it are SAC calls, so a passkey session cannot do anything
-// at all unless the relay admits it. The transfer's `from` is the user's own wallet and only
-// their passkey can authorise it, so the worst a stranger can do is spend our testnet fee on
-// moving their own funds.
-const TESTNET_NATIVE_SAC = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC";
 
 /** An XLM amount from env as stroops; `fallback` when unset. Throws on anything that is not
  *  a plain positive decimal — a typo in a spending limit must not read as "no limit". */
@@ -105,41 +94,25 @@ const XLM = 10_000_000n;
 
 /** What this deployment sponsors, from its env. Throws on a configuration that cannot be safe. */
 export function relayNetwork(env: RelayEnv): RelayNetwork {
-  const name = clean(env.RELAY_NETWORK) || "testnet";
+  const name = clean(env.RELAY_NETWORK) || "pubnet";
+  if (name !== "pubnet") throw new Error(`unknown RELAY_NETWORK "${name}" — the relay runs on pubnet only`);
+  const rpcUrl = clean(env.RELAY_RPC_URL);
+  if (!rpcUrl) throw new Error("RELAY_RPC_URL is required");
+  const dailyBudget = xlmEnv("RELAY_DAILY_BUDGET_XLM", env.RELAY_DAILY_BUDGET_XLM, null);
+  if (dailyBudget === null) throw new Error("RELAY_DAILY_BUDGET_XLM is required");
   const listed = csv(env.RELAY_ALLOWED_CONTRACTS);
-  // A factory create measures about 0.32 XLM of resource fee on testnet (0.42 padded); 1 XLM
-  // leaves room for that and refuses anything an order of magnitude dearer.
-  const maxTxFee = xlmEnv("RELAY_MAX_FEE_XLM", env.RELAY_MAX_FEE_XLM, XLM) as bigint;
-  if (name === "testnet") {
-    return {
-      name,
-      passphrase: "Test SDF Network ; September 2015",
-      rpcUrl: clean(env.RELAY_RPC_URL) || "https://soroban-testnet.stellar.org",
-      contracts: [...listed, TESTNET_NATIVE_SAC, TREASURY_FACTORY_ID, ...LEGACY_TREASURY_FACTORY_IDS],
-      requiresLimiter: false,
-      dailyBudget: xlmEnv("RELAY_DAILY_BUDGET_XLM", env.RELAY_DAILY_BUDGET_XLM, null),
-      maxTxFee,
-      minBalance: xlmEnv("RELAY_MIN_BALANCE_XLM", env.RELAY_MIN_BALANCE_XLM, null) ?? 0n,
-    };
-  }
-  if (name === "pubnet") {
-    const rpcUrl = clean(env.RELAY_RPC_URL);
-    if (!rpcUrl) throw new Error("RELAY_RPC_URL is required on pubnet");
-    const dailyBudget = xlmEnv("RELAY_DAILY_BUDGET_XLM", env.RELAY_DAILY_BUDGET_XLM, null);
-    if (dailyBudget === null) throw new Error("RELAY_DAILY_BUDGET_XLM is required on pubnet");
-    const factory = clean(env.RELAY_FACTORY_ID);
-    return {
-      name,
-      passphrase: "Public Global Stellar Network ; September 2015",
-      rpcUrl,
-      contracts: factory ? [...listed, factory] : listed,
-      requiresLimiter: true,
-      dailyBudget,
-      maxTxFee,
-      minBalance: xlmEnv("RELAY_MIN_BALANCE_XLM", env.RELAY_MIN_BALANCE_XLM, 5n * XLM) as bigint,
-    };
-  }
-  throw new Error(`unknown RELAY_NETWORK "${name}"`);
+  const factory = clean(env.RELAY_FACTORY_ID);
+  return {
+    name,
+    passphrase: "Public Global Stellar Network ; September 2015",
+    rpcUrl,
+    contracts: factory ? [...listed, factory] : listed,
+    dailyBudget,
+    // A factory create measured about 0.32 XLM of resource fee (0.42 padded); 1 XLM leaves
+    // room for that and refuses anything an order of magnitude dearer.
+    maxTxFee: xlmEnv("RELAY_MAX_FEE_XLM", env.RELAY_MAX_FEE_XLM, XLM) as bigint,
+    minBalance: xlmEnv("RELAY_MIN_BALANCE_XLM", env.RELAY_MIN_BALANCE_XLM, 5n * XLM) as bigint,
+  };
 }
 
 /** Why the relay will not pay for this one, as the caller should hear it. */
@@ -172,11 +145,9 @@ export function feeGate(
         throw new Refused(503, "The relay is paused. Try again later.");
       }
     }
-    if (net.dailyBudget !== null) {
-      if (!budget || !(await budget.reserve(stroops, net.dailyBudget))) {
-        console.error(`[relay] daily budget reached (${net.dailyBudget} stroops)`);
-        throw new Refused(503, "The relay has reached today's limit. Try again tomorrow.");
-      }
+    if (!budget || !(await budget.reserve(stroops, net.dailyBudget))) {
+      console.error(`[relay] daily budget reached (${net.dailyBudget} stroops)`);
+      throw new Refused(503, "The relay has reached today's limit. Try again tomorrow.");
     }
   };
 }
@@ -216,17 +187,16 @@ export async function handleRelay(req: Request, env: RelayEnv, guards: RelayGuar
     console.error("relay misconfigured:", e instanceof Error ? e.message : String(e));
     return json({ error: "Relay is not configured." }, 503);
   }
-  // Fails closed: a mainnet relay without its limiters and its daily total would pay real
-  // fees for anyone, as fast and as often as they can ask.
-  if (net.requiresLimiter && !(limiter && walletLimiter && budget)) {
+  // Fails closed: a relay without its limiters and its daily total would pay real fees for
+  // anyone, as fast and as often as they can ask.
+  if (!(limiter && walletLimiter && budget)) {
     return json({ error: "Relay is not configured." }, 503);
   }
-  if (net.dailyBudget !== null && !budget) return json({ error: "Relay is not configured." }, 503);
-  if (limiter && !(await limiter.limit({ key: clientKey(req) })).success) {
+  if (!(await limiter.limit({ key: clientKey(req) })).success) {
     return json({ error: "Too many requests — wait a minute and try again." }, 429);
   }
 
-  const secret = clean(env.RELAY_SECRET) || clean(env.DISPENSER_SECRET);
+  const secret = clean(env.RELAY_SECRET);
   let keypair: Keypair | null = null;
   try {
     if (secret) keypair = Keypair.fromSecret(secret);
@@ -251,12 +221,7 @@ export async function handleRelay(req: Request, env: RelayEnv, guards: RelayGuar
   const isEnvelope = typeof envelope === "string" && envelope.length > 0;
   if (!isFuncCall && !isEnvelope) return json({ error: "Malformed request." }, 400);
 
-  // Testnet carries every treasury version this app ever deployed there; mainnet starts at v4
-  // and admits exactly what its env names besides it — no testnet-era code.
-  const wasmHashes =
-    net.name === "pubnet"
-      ? [...new Set([...csv(env.RELAY_ALLOWED_WASM), TREASURY_WASM_HASH])]
-      : allowedWasmHashes(clean(env.RELAY_ALLOWED_WASM));
+  const wasmHashes = allowedWasmHashes(clean(env.RELAY_ALLOWED_WASM));
   const readWasmHash = async (contractId: string): Promise<string | null> => {
     const entry = await new rpc.Server(net.rpcUrl).getContractData(
       contractId,
@@ -292,11 +257,9 @@ export async function handleRelay(req: Request, env: RelayEnv, guards: RelayGuar
     if (!authEntriesAreSafe(entries, keypair.publicKey())) return json({ error: "Not allowed." }, 403);
     // A wallet asking from many addresses is still one wallet. The envelope path (creating a
     // wallet) has no wallet yet to key on; the IP limiter and the daily total cover it.
-    if (walletLimiter) {
-      for (const wallet of signingAddresses(entries)) {
-        if (!(await walletLimiter.limit({ key: wallet })).success) {
-          return json({ error: "Too many requests — wait a minute and try again." }, 429);
-        }
+    for (const wallet of signingAddresses(entries)) {
+      if (!(await walletLimiter.limit({ key: wallet })).success) {
+        return json({ error: "Too many requests — wait a minute and try again." }, 429);
       }
     }
   }

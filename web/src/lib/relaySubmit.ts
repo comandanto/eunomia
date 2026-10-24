@@ -4,7 +4,7 @@
 // CAP-0071-02 address-bound credentials (`sorobanCredentialsAddressV2`, Protocol 27) and the
 // Channels plugin runs @stellar/stellar-sdk 14.6.1, which rejects that credential type while
 // parsing — "unknown SorobanCredentialsType member for value 2". Measured directly against
-// both SDKs; testnet itself is on Protocol 27, so the chain is not the laggard here. Until
+// both SDKs; the network itself is on Protocol 27, so the chain is not the laggard here. Until
 // Channels catches up, every passkey-signed call has to be submitted by us.
 //
 // What this does NOT change: authorisation. The auth entries are signed by the user's passkey
@@ -91,7 +91,7 @@ export async function submitHostFunction(
   const build = (sorobanData?: xdr.SorobanTransactionData) =>
     new TransactionBuilder(new Account(address, sequence), {
       // Inclusion fee, on top of whatever the resources cost. BASE_FEE is the network floor
-      // and gets outbid the moment testnet has any queue at all — a deploy came back
+      // and gets outbid the moment the network has any queue at all — a deploy came back
       // txInsufficientFee against it. This is still a fraction of a cent.
       fee: INCLUSION_FEE,
       networkPassphrase: deps.networkPassphrase,

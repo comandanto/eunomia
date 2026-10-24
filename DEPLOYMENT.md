@@ -1,323 +1,34 @@
-# Eunomia — Testnet Deployment
+# Eunomia — Deployment
 
-Network: **Stellar Testnet** (`Test SDF Network ; September 2015`)
+Network: **Stellar mainnet** (`Public Global Stellar Network ; September 2015`) — the only one
+the app, the relay, the indexer and `eunomia-mcp` run on.
 
-## Identities
+## Mainnet contracts
 
-| Alias | Address | Role |
-|-------|---------|------|
-| alice | `GDPKXL6CNHUXBV4PM54CPTRZNQRYVTIMO4YGBW3M2MNSCMQ7TTNINXP6` | Admin + USDC issuer |
-| agent | `GDAOXABLEOFZP2M4PRM7N6YKOKXWMPFOSLU35WL5ZQY4PQFHF3VCIDS6` | The bounded AI agent (signs `pay`) |
-| service | `GDOMW4C36BUBBFJW3V4L22LUICOUKFVTPGOYU6UMZZ6D3ENEOCH4QCRT` | Whitelisted payee (has USDC trustline) |
-
-## Contracts
-
-| Contract | Address |
-|----------|---------|
-| USDC (SAC, issuer=alice) | `CDCEHPK4OJXVRA4JV7N56GR5SRD5KGGZ55BDSHKODGR72Y4KGS6A3Y2W` |
-| **Eunomia Treasury** | `CAYWNXHANRY5GSJAZOR4YTKBKNOKTCITE52ZRKDKCAWLDTYWFFVFSPAZ` |
-| Treasury wasm hash | `41c8bb1f0b4d9bd7b89c3a855ee87cb56971a256fe110cd2860d406dde040c2b` |
-| **Compliance Verifier (ZK, hardened)** | `CCOLX7NEBDJRRVTPFVSK3UJLHMG3HO4UVYJW3NFBOTUG7Q7GOP63DBRH` |
-
-## Policy (constructor)
-
-- `daily_limit`  = `500000000`  (50 USDC, 7 decimals)
-- `per_task_limit` = `100000000` (10 USDC)
-
-## Verified on-chain (USDC has 7 decimals → 1 USDC = 10_000_000)
-
-| Action | Result |
-|--------|--------|
-| Fund treasury (mint 500 USDC) | balance = `5000000000` ✅ |
-| `is_payee(service)` | `true` ✅ |
-| `is_payee(attacker)` | `false` ✅ |
-| **Rogue pay → non-whitelisted** | `Error(Contract, #2)` PayeeNotWhitelisted ✅ rejected on-chain |
-
-Full policy (legit pay + per-task `#3` / daily-limit `#4` rejection + per-task accounting +
-day-rollover reset) is proven by the contract test suite — `cargo test` → **6/6 passing** —
-and exercised live in the dashboard demo (6 core tests at v1; the suite has since grown — see the v3 section below). The treasury starts each demo clean at 500 USDC.
-
-## Confidential compliance layer (ZK)
-
-A Groth16 (BN254) proof, verified **on-chain** by the Compliance Verifier contract, attests that a
-batch of agent payments obeyed policy — each ≤ per-task limit, Σ ≤ daily limit, every payee ∈ a
-committed whitelist — **without revealing any amount or payee**. Payments are committed as
-`Poseidon(amount, payee, salt)`; only the commitments + the proof go on-chain.
-
-| Item | Value |
-|------|-------|
-| Compliance Verifier (hardened) | `CCOLX7NEBDJRRVTPFVSK3UJLHMG3HO4UVYJW3NFBOTUG7Q7GOP63DBRH` |
-| Verifier wasm hash | `3afb9ef6ade22da54b7046f1dcb2a679a2dfd096d2de3dc863a3cd712e039c80` |
-| **On-chain verify tx** | [`4438c949…cac2a`](https://stellar.expert/explorer/testnet/tx/4438c94952d6d06fbf6b205e07be1c28ea33c5e1422a5323e93572788b9cac2a) → emitted `ComplianceAttested` |
-| **Replay rejected** | a 2nd verify of the same `periodId` traps (`already attested`) — replay guard live |
-
-Verified statement (public signals `[dailyLimit, perTaskLimit, whitelistRoot, periodId, commitments[8]]`).
-
-**Hardened (not just a math check).** The verifier anchors the owner's policy at deploy
-(`__constructor(admin, daily_limit, per_task_limit, whitelist_root)`) and `verify()` requires the
-proof's public `dailyLimit / perTaskLimit / whitelistRoot` to byte-match the anchor — so a valid
-proof for some *self-chosen* policy can no longer attest. Each `periodId` is consumed once
-(persistent guard), so a compliant proof can't be replayed to mask a later non-compliant period.
-The verify call emitted `attested = { whitelist_root, period_id }` on-chain. Circuit witness tests
-(`npm test` in `circuits/`) → **6/6**; contract tests (`cargo test -p compliance_verifier`) → **4/4**
-(valid attest, tampered-proof trap, policy-mismatch trap, replay trap).
-
-**Honesty note.** The ZK layer hides Eunomia's *compliance ledger* — Eunomia's storage and events carry
-only commitments and a proof, never plaintext amounts or payees. If confidential mode also moves real
-USDC via SAC transfers to revealed payees at settlement, those transfers stay visible at the
-**token-contract layer**; transfer-level privacy is the shielded-pool roadmap. For the demo, real fund
-movement is shown in the contrasting transparent treasury ("public mode"), while confidential mode
-focuses on commitments + the on-chain-verified compliance proof.
-
-**Toolchain:** Circom + snarkjs (Groth16 / BN254), public Hermez powers-of-tau; on-chain verifier
-generated with `soroban-verifier-gen --curve bn254`, verified via Soroban's `bn254_multi_pairing_check`.
-
-## Confidential Token policy — OpenZeppelin `ComplianceHooks` (live on testnet)
-
-Eunomia's payee gate, packaged as an [OpenZeppelin + SDF Confidential Token](https://github.com/OpenZeppelin/stellar-contracts/tree/feat/confidential-verifier-ultrahonk)
-`Policy` (`is_authorized(account, token) -> bool`). Wire it as a confidential token's
-`compliance.policy` and every **private-amount** transfer is still bounded to authorized
-payees by Eunomia — whitelist OR earned reputation. *The confidential token hides the amount;
-Eunomia bounds the payee.*
-
-| Item | Value |
-|------|-------|
-| **Eunomia Policy** (ComplianceHooks) | `CBWMYGL7E663UON6ER5KQX2JZZA4UDZZD4RIFEHGXXF2HMMBRAN7BLQF` |
-| Deploy tx | [`8fb7f456…`](https://stellar.expert/explorer/testnet/tx/8fb7f45696f9d632596e960f61477654189dcc96f6af134843519958b9d13562) |
-| `is_authorized(service)` — whitelisted | `true` ✅ (live) |
-| `is_authorized(attacker)` — not whitelisted | `false` ✅ (live) |
-
-Wiring at the confidential token's construction:
-
-```rust
-ComplianceConfig { policy: Some(EUNOMIA_POLICY), sac_passthrough: false }
-```
-
-Contract tests: `cargo test -p policy` → **2/2** (whitelist gate + reputation gate). The
-end-to-end POC against a deployed OZ Confidential Token is the next step (their preview
-needs Noir/UltraHonk + WSL2; tracked post-demo).
-
-## Upgraded treasury v2 — reputation gate + escrow (live on testnet)
-
-Deployed fresh (the original demo treasury keeps its addresses) to prove the two
-Casper-adapted features on-chain. `zk-deployer` is admin + agent; token = native XLM SAC.
-
-| Item | Value |
-|------|-------|
-| **Treasury v2** | `CDKQGDPLRX6DOCQTI5KVMZNGMPKMSRNGJRVCQ7LAAQGB2S5JKDCHXT5H` |
-| Reputation Oracle (stellar-8004 stand-in) | `CCJFIEYFNPRTJVCOGOSESYC5Z6FHHHYAH36V7QTZEDPKESY6O5TPINKY` |
-
-- **Reputation-gated payee** — a payee that is NOT whitelisted but scores ≥ threshold is paid on-chain: [tx `8d62132f…`](https://stellar.expert/explorer/testnet/tx/8d62132f4940f71758a351e68c8a7fe0f24b14207abf8c9c3eed6b3842c215cb)
-- **Escrow release** — locked funds released to the payee on approval: [tx `df742d98…`](https://stellar.expert/explorer/testnet/tx/df742d987d85efb517a164b68e36c9302c4daf623c15dcaf416c73cbb26f6c4b)
-- **Escrow refund** — an expired escrow unlocks back to free balance (`locked → 0`): [tx `b545aeb4…`](https://stellar.expert/explorer/testnet/tx/b545aeb489e8e36f73b195f299b5926f2387979cd71701bb428a8b099a718e46)
-
-Contract tests at the v2 milestone: 14/14 (6 core + 3 reputation + 5 escrow); the current suite is larger — see the v3 section below.
-The reputation source is an ERC-8004-style registry (`reputation_of(agent) → i128`); the
-oracle above is a demo stand-in for trionlabs/stellar-8004, which is the production target.
-
-## Treasury v3 + Treasury Registry — M2 agent infrastructure (live on testnet)
-
-M2 ships agent
-**sessions** (time-bound, spend-capped, instantly revocable — the ONLY spender while
-active), the contract **lifecycle** (pause/resume, admin withdraw, limit updates, agent
-rotation), and a **rolling 24h window** (hourly buckets — closes audit finding C2).
-Deployed with the `seyit` identity; per-user deploys in the app instantiate v3.
-
-| Item | Value |
-|------|-------|
-| **Treasury v3.4 wasm hash (current)** | `b813a1e7a3d2ddb1013dbaa11a41dcc1fbed984a30cfef9023dc199b12131a72` |
-| v3.4 (2026-08-06, audit **H1**: `period_spent` + `whitelist_root` — the surfaces a compliance proof binds to) | [`901f0c39…f6c9`](https://stellar.expert/explorer/testnet/tx/901f0c390a63216a3eae842c306bf667f07f70c491258a05bbd1967bc0c3f6c9) |
-| v3.4 smoke treasury (`daily=1000`, `per_task=300` stroops) | [`CBCBYWUM…JN36`](https://stellar.expert/explorer/testnet/contract/CBCBYWUMRD7L6GFTRJME232JUAEJ2B263N5O7MDGCMDFG4FI6GJ5JN36) |
-| Treasury v3.3 wasm hash (previous) | `56a4d92660256b939433b51f35618515f4e77290f0978f72dcf64be719936795` |
-| v3.3 upload tx (2026-08-05 audit: **M1** window holds a full 24h · **M3** daily limit bounds committed value) | [`71899b55…963c`](https://stellar.expert/explorer/testnet/tx/71899b55dd20d56b00bbdf09735736cc2b8f619d8f64482c92429b77ddcd963c) |
-| v3.3 smoke treasury | [`CBGPB5JG…7OZK`](https://stellar.expert/explorer/testnet/contract/CBGPB5JGKGVGLY3HHTR6Z2G4OC6PI3NOWSE7WGBCHGIEC5MALCDZ7OZK) |
-| Treasury v3.2 wasm hash (previous) | `475cfbe2ca79d7977c8e4d29438ae70b9d95a12cb2bfcd9fed4e4f7a26d798b2` |
-| v3.2 upload tx (audit **C3** closure: instance-storage TTL auto-extended on every mutation) | [`d97fc74f…7ab1`](https://stellar.expert/explorer/testnet/tx/d97fc74fe0c2f750b27669690c9b7c58caffe4532501c7b98ed63afd5cbe7ab1) |
-| Treasury v3.1 wasm hash (previous) | `7e103d8c177f3b46d4f7ccee695e7c9a92f5d3e5e55b96324173f923db9f9ae7` |
-| v3.1 upload tx (audit hardening: `admin_cancel_escrow` + deadline validation + escrow TTL + whitelist/rep-gate events) | [`e12e748b…43b3c`](https://stellar.expert/explorer/testnet/tx/e12e748bdaafa39a08c2bfe56e009fa507f951d93af16455cb7ece019a243b3c) |
-| Treasury v3 wasm hash | `2e6ab69e964b85a1954443d067d809c8519a20eb909fd16ac23abab318f184b8` |
-| v3 upload tx | [`aa81495d…90bef`](https://stellar.expert/explorer/testnet/tx/aa81495db875d28715acb056614614bd04094b4aaf67f80b05ffefd0ec590bef) |
-| v2.1 wasm hash (previous: escrow + free-balance guard) | `3f01e85ddf344e9f9298f828a43fe6acbb2666e5f36f6899d197a47021290280` |
-| **Treasury Registry** | [`CBEPVXK6…4ZE7`](https://stellar.expert/explorer/testnet/contract/CBEPVXK6BN2FZ3IYHV5KQUGROFHNBWBYHKHRZ5U3O7UWGIOPFOFE4ZE7) |
-| v3.2 smoke treasury | [`CAV6JJLD…BEAH`](https://stellar.expert/explorer/testnet/contract/CAV6JJLDKIGUFVU4MGYJH6VO7GALJKLT4I3DMDUU3TO2IDO2ERUCBEAH) |
-| M2 smoke treasury (v3) | [`CCXC3DSK…XR7K`](https://stellar.expert/explorer/testnet/contract/CCXC3DSKCURJ76P3GNVCATBO572ZCZG6PHRPC22FTTGI7O3GFAHIXR7K) |
-
-Verified live on the smoke treasury:
-
-- **Rolling window** — a `pay` executes with the 24-bucket read footprint well inside tx
-  limits; `day_spent` reports the rolling sum.
-- **Pause** — `pay` while paused → `Error(Contract, #9)`; `admin_withdraw` still works
-  while paused (exit paths never lock).
-- **Limits** — `set_limits(100, 200)` → `Error(Contract, #11)`; after `set_limits`
-  lowered per-task, an over-limit `pay` → `Error(Contract, #3)` immediately.
-- **Session single-spender** — after `set_session`, the session key paid on-chain; the
-  ROOT agent's signature could no longer authorise `pay` (auth requires the session
-  agent); over-cap → `Error(Contract, #10)`; after `revoke_session` the root agent paid
-  again and `get_session` → `None`.
-- **Registry** — `register` + duplicate no-op + `treasuries_of` returning the treasury.
-
-Contract tests: `cargo test -p treasury` → **59/59** · `cargo test -p treasury_registry` → **3/3** ·
-`cargo test -p compliance_verifier` → **17/17**.
-
-### v3.3 live verification (2026-08-05)
-
-Proved on the smoke treasury above (`daily_limit = per_task_limit = 100` stroops), because
-"the tests pass" is not the same claim as "the chain enforces it":
-
-| Step | Result |
-|---|---|
-| `create_escrow(100)` | ✅ escrowed · `day_spent() = 100` — **the fix**: on v3.2 this read `0`, because only `release` charged the window |
-| `locked()` | `100` |
-| `create_escrow(1)` — a second commitment | ❌ `Error(Contract, #4)` ExceedsDailyLimit |
-| `pay(1)` — a direct payment | ❌ `Error(Contract, #4)` |
-| `admin_withdraw` | ✅ still succeeds — the owner's exit is never blocked by what the agent committed |
-
-M1 (the 24h window boundary) is covered by `window_never_frees_before_a_full_24h` rather than
-on-chain: proving it live would mean waiting out a real 23-25h window on testnet.
-
-### H1 — proofs bound to chain state (2026-08-06)
-
-The verifier redeploy that was held back for this is done. It is now multi-tenant and keeps
-no policy of its own: `verify(treasury, proof, public)` re-reads the limits, the payee root
-and the period's total from the treasury itself, and the circuit forces the proved batch to
-equal that total (public signals 12 → 13, new `.zkey`, new verifier address).
-
-| Item | Value |
-|------|-------|
-| **Compliance verifier (13 public signals, 2026-08-06)** — superseded on 2026-08-07 by the 16-payment-batch verifier [`CD3TB3F4…DYZ3`](https://stellar.expert/explorer/testnet/contract/CD3TB3F4VQF2H56IQC4KV3YLA6QRIF272W5D6PK2SWVTYPXHS4NFDYZ3) (21 public signals — the one the app reads, `web/src/config.ts`); proofs are not portable between the two | [`CCZKA3K4…D5Q`](https://stellar.expert/explorer/testnet/contract/CCZKA3K4SPIFWG7UBIY2CE7LPKPMCWROCHXZO2JAMYVVGU6TUKOWMD5Q) |
-| verifier wasm hash | `84bdc367ff9abfcc00994b7480653135367a26b2a6ffee7e1a52650bad88a00d` |
-| deploy tx | [`7e9ca5e5…115c`](https://stellar.expert/explorer/testnet/tx/7e9ca5e50d4e623a96904ea21651e13d373d5e970a16e05d4cf50bd26b53115c) |
-| live attestation (`attested`, period 20670) | [`426e55d6…4606`](https://stellar.expert/explorer/testnet/tx/426e55d6ce0a9157c156190cee39dc2a1d302cf4c7f4f98cc930da5ad63b4606) |
-
-Verified on chain against the v3.4 smoke treasury — the rejections matter more than the
-acceptance, because H1 was precisely that nothing got rejected:
-
-| Step | Result |
-|---|---|
-| a valid proof of a **fabricated** 350-unit batch, on a period the chain says was quiet | ❌ `Error(Contract, #9)` SpendMismatch — **the fix**: this is the 08-05 audit's attack, refused |
-| attesting the current, still-open period | ❌ `Error(Contract, #6)` PeriodNotClosed |
-| the period's real total (`period_spent` = 0) for a closed day | ✅ `attested` emitted · `last_period` → `20670` |
-| the same period a second time | ❌ `Error(Contract, #8)` PeriodNotAdvancing |
-
-An attestation over a period with **non-zero** spend needs that period to close first: the
-smoke treasury spent 350 in period 20671, so
-`npx tsx scripts/prove-and-submit.ts --treasury CBCBYWUM…JN36 --period 20671 --payments 100:11,200:22,50:33`
-produces it once 20671 is over.
-
-## Error codes
-
-`1` InvalidAmount · `2` PayeeNotWhitelisted · `3` ExceedsTaskLimit · `4` ExceedsDailyLimit ·
-`5` BelowReputationThreshold · `6` InsufficientFreeBalance · `7` EscrowNotFound · `8` DeadlineNotReached ·
-`9` Paused · `10` ExceedsSessionLimit · `11` InvalidLimits · `12` InvalidDeadline
-
-## Funding rail — muxed attribution
-
-Pool account (classic G): `GD2NZKSMQW367OIFXRM4NP7RIW6YLDZLJ4C7253MDOKCFC4Q4IOO3427`
-
-Each agent budget is a **zero-cost muxed (M...) sub-address** of the pool, derived by id
-(1 = Research, 2 = Marketing, 3 = Ops). A client pays the M-address; Horizon attributes the
-deposit via `to_muxed_id` — no memos, no new accounts. Verified live (5 XLM → budget #1,
-tx `a13fdb5b…`). Funder in the demo = the `agent` key (stands in for a client wallet).
-
-## ERC-8004 (trionlabs/stellar-8004) — testnet registries to integrate
-
-| Registry | Testnet address |
-|----------|-----------------|
-| Identity | `CDE3K4COIAGWNNJQQLL26SYI3KBJF5FUDHXG5FA6GYDJCG7T5V7FIWZH` |
-| Reputation | `CBZEAGIEI3HXMDRLF44KLQJQQOH6LCYWWSGJVSYQYQO2HQ6DDGZ7HT55` |
-| Validation | `CC5USZRO26MOIAVNYTTJDS63C2OBBLREOAOET4CPF2EZWO3YFKLMO3SL` |
-
-SDK: `@trionlabs/8004-sdk` · Agent id format: `stellar:testnet:{identityRegistry}#{agentId}`
-
-## eunomia-mcp — Week-1 smoke (2026-09-14)
-
-The MCP surface (`packages/mcp`, npm `eunomia-mcp`) read against a fresh v3.5 treasury and
-the agent-credential handshake exercised end to end. The owner's signature is the `alice`
-CLI identity here; the dashboard's Agent page signs the same `set_session` with a passkey
-or wallet.
-
-| Step | Value |
-|---|---|
-| **W1 treasury** (v3.5 wasm `82447206…9641`, admin = agent = alice, XLM, daily 100 / per-payment 10) | [`CDVCLLGG…YNJ2`](https://stellar.expert/explorer/testnet/contract/CDVCLLGGMV6MJSJZYCPJI36BG6SGKSWVD44PORHVVFRBTSACEABBYNJ2) |
-| deploy tx | [`e40120a9…ffe8`](https://stellar.expert/explorer/testnet/tx/e40120a9f67214355e929e5b9c30062e28c4347605bfd20771d581593ca4ffe8) |
-| fund 20 XLM (SAC transfer) | [`5998358a…6ee8`](https://stellar.expert/explorer/testnet/tx/5998358ae35efc934d748c166b606fd10256fdfe34e3fe3ddfb6216bc7266ee8) |
-| `add_payee(service)` | [`3ed29c9a…27b2`](https://stellar.expert/explorer/testnet/tx/3ed29c9a5580d6dfecdc1640ba88a149c8159aadf93cb984b3c506e2e57027b2) |
-| agent credential (`eunomia-mcp init`, key generated locally, friendbot-funded) | `GB4GJNEZ6KLZNU3TE2CHQFNPOEQL5SHPQ246OMRZRLKVVQNLZCDX2QXZ` |
-| owner starts the Leash — `set_session(agent, +24h, 30 XLM)` | [`542b2f25…5c92`](https://stellar.expert/explorer/testnet/tx/542b2f253b0f5133c9d93c489bd887da9d0b8db2da51288c14332c7267455c92) |
-| owner revokes — `revoke_session` | [`f2e95670…2286`](https://stellar.expert/explorer/testnet/tx/f2e95670cbea720f07a27e08aa9d513a959203f37f4107cfed3a1d3bb65e2286) |
-
-`npm run smoke` (an MCP client spawning the built server over stdio) between those two
-transactions, then after the revoke:
-
-| Tool | Leash active | After revoke |
-|---|---|---|
-| `check_budget` | `canSpend: true` · `session.isThisAgent: true` · `spendableNow: "10"` · `decision(2.5).allowed: true` | `session: null` · `canSpend: false` · blocker *"No active Leash for this treasury — the owner must start one…"* |
-| `list_allowed_payees` | `["GDOMW4C3…QCRT"]` (from `payee_add` events, confirmed by `is_payee`) | same, now also from the local cache (`cachedKnown: 1`) |
-| `check_payee(attacker GAKSMBN6…)` / `(service)` | `allowed: false` | `allowed: true` |
-
-Found and fixed on the way: the public RPC's `getEvents` scans at most ~10 000 ledgers per
-call and returns an empty page **with a cursor**; a listing that stopped at "fewer events
-than the limit" missed every payee older than the last slice. The listing now walks the
-cursor to the tip (unit-tested with a fake pager).
-
-## eunomia-mcp — Week-2 live run (2026-09-15)
-
-`eunomia-mcp` 0.2.0 paying from the W1 treasury above with the Leash key, refused with the
-contract's own codes, and asking the owner for an exception — every step on testnet. The
-owner's signature is again the `alice` CLI identity; the dashboard's Agent page does the same
-with a passkey or wallet ("Approve payee" on the request card).
-
-| Step | Value |
-|---|---|
-| owner starts the Leash — `set_session(agent, +24h, 30 XLM)` | [`099dd99d…9206`](https://stellar.expert/explorer/testnet/tx/099dd99ddb88db95594c118d3cfcf55145119fd74ac29e596c7264ee20329206) |
-| **first autonomous in-budget payment** — `pay` 2.5 XLM → `service`, signed by the agent key over MCP | [`e8d564ba…c8ba`](https://stellar.expert/explorer/testnet/tx/e8d564ba222324b1633df25f259d9c7ea57f1836c07e3215b20fd66e5d7dc8ba) |
-| `pay` 15 XLM → `service` (per-payment cap 10) | refused in simulation, no fee: `stage: "simulation"`, `reasons: [{ code: 3, name: "ExceedsTaskLimit" }]` |
-| `pay` 1 XLM → `supplier` (not whitelisted) | refused in simulation: `reasons: [{ code: 2, name: "PayeeNotWhitelisted" }]` |
-| **first on-chain policy rejection** — `eunomia-mcp pay … --amount 15 --record-rejection` | [`24da989e…9055`](https://stellar.expert/explorer/testnet/tx/24da989ed9afe7739df315982c63523bec7cbe6124e5a1baf5ca7396ea9f9055) — ledger 4691756, **FAILED**, diagnostics `Error(Contract, #3)` |
-| `request_exception` 1 XLM → `supplier` — `manageData` on the agent account, id `CDVCLLGG.mu2rj4ft` | [`56317111…80be`](https://stellar.expert/explorer/testnet/tx/56317111675026de28a298c3ec0bd531efa89b6204c7780d1f4c7e604e0d80be) |
-| `check_exception` | `status: "pending"` · dashboard Agent page lists it with **Approve payee** |
-| owner approves — `add_payee(supplier)` | [`46db1da9…3f16`](https://stellar.expert/explorer/testnet/tx/46db1da953ccf48722c82d395d97dd45fa6f5ca31a4629852ec87fc4f6983f16) |
-| `check_exception` | `status: "approved"` — derived from the chain now accepting the payment |
-| `pay` 1 XLM → `supplier` | [`abd31c1c…6603`](https://stellar.expert/explorer/testnet/tx/abd31c1ce92bb9106736914e22a31003d1071f7f75a10f0c8f03249d92856603) |
-| `pay` closes the request it satisfied (`manageData` delete) | [`0cc83226…03c1`](https://stellar.expert/explorer/testnet/tx/0cc832263383f5925bbab2c4a9f2887c8d66186569016cac0c560283aeab03c1) · `check_exception` → `closed` |
-
-How the rejection got on the ledger: the RPC's simulation already refuses an over-limit
-`pay` (the contract runs in the host), so there is nothing to submit. `--record-rejection`
-borrows the footprint and resource fee from a passing 1-stroop probe, attaches the invoker
-auth entry bound to the real arguments, and submits — the transaction is included, fails
-with the contract's error, and the same `Error(Contract, #3)` is read back out of its
-diagnostic events. The MCP tool never does this on its own; it costs the agent a fee.
-
-Found and fixed on the way: the binding's `Err` for a refused simulation carries an empty
-message (the contract's error enum has no doc comments), so codes are read from the
-simulation's error text — the same `Error(Contract, #N)` the CLI prints.
-
-## Treasury factory — one signature from zero to a Leashed treasury (2026-09-16)
-
-Creating a treasury used to be five owner-signed transactions (deploy, register, fund,
-approve payee, start the Leash): seven passkey prompts for a new user. `treasury_factory`
-does all of it in one `create(setup)` call under a single owner authorisation; its tests
-assert exactly one root auth with four sub-invocations. It has no admin: the treasury wasm
-(v3.5 `82447206…9641`) and the registry are pinned at deploy.
+Set at deploy. Until then the app refuses to build and the relay and indexer refuse to run
+(both fail closed on the empty settings below).
 
 | Item | Value |
 |---|---|
-| **Factory** (wasm `14c205cb…7d4f`) | [`CAWLFTQ4…2OMS`](https://stellar.expert/explorer/testnet/contract/CAWLFTQ4V3ZPUWRVL5RGXBBA7FMJ26EXW37GGKCGKOXO4TKABEHF2OMS) |
-| upload · deploy | [`64c76a7e…2561`](https://stellar.expert/explorer/testnet/tx/64c76a7e368172026288d891d0fbc1d83f5a60f94249cc356176601ed7d32561) · [`82044bfc…eb00`](https://stellar.expert/explorer/testnet/tx/82044bfc697f8141604184d6415098f3e9e8caba98483fa2ba46f4358f3beb00) |
-| **wallet path** — `alice` (G-address) creates with policy 100/10, payee `service`, Leash for `GB4G…2QXZ` (24h, 30 XLM), 5 XLM funding, registry | one tx [`f20587e5…2004`](https://stellar.expert/explorer/testnet/tx/f20587e568eb16c2c01a067943f6f8392c67168fa6de0c420dff958fcf612004) → treasury [`CAIH6DW5…M4AT`](https://stellar.expert/explorer/testnet/contract/CAIH6DW5MBTPRBPJHISLVJJCDHKSD4AXEQW327IBM2K67ZHROQ76M4AT) — events `payee_add`, `session`, `transfer`, `regd`, `created` in that transaction |
-| **passkey path** — a new smart wallet `CAW4DEJP…JKRV` on eunomia.finance (live Playwright run, virtual authenticator, relay-sponsored): policy 50/10, payee, Leash (25 XLM/24h), 5 XLM | one tx [`a24f01a1…f637`](https://stellar.expert/explorer/testnet/tx/a24f01a15ec6606d63e406b3fcd5efd597074513e188d97c17e9b8badabaf637) → treasury [`CBA6WVNB…QILT`](https://stellar.expert/explorer/testnet/contract/CBA6WVNBH7ECHQFVEYL6SY6SAEQKQVTUM4FXMLN5BJ5BJBVR74WKQILT); the authenticator's signature counter moved by **exactly one** across the create step |
+| Treasury v4 wasm | `c11a5c63e610be259cdcf23d276fdf6f3069fdc6069c4d713b52d556f24238ec` (the code `web/src/lib/treasuryWasm.ts` pins; uploaded at deploy) |
+| **Treasury factory** | set at deploy → `EUNOMIA_FACTORY_ID`, `RELAY_FACTORY_ID` |
+| **Treasury registry** | set at deploy → `EUNOMIA_REGISTRY_ID`, `RELAY_ALLOWED_CONTRACTS`, the indexer's `REGISTRY_ID` |
+| Deposit caps (beta) | the factory's constructor, one per token: **500 XLM** and **100 USDC** (about the same in dollars on 2026-10-24); any other token is refused |
+| Passkey smart-wallet wasm | `fdefad64b96837147e1c333e51f537b696eab925e9f147e63d597c04e3c903f0` (`passkey-kit`; admitted by the relay through `RELAY_ALLOWED_WASM`) |
+| XLM (SAC) | `CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA` |
+| Circle USDC (SAC of `USDC:GA5ZSEJY…KZVN`) | `CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75` |
 
-`web/tests/e2e/passkey.live.spec.ts` (`npx playwright test --config playwright.live.config.ts passkey.live`)
-drives that passkey path against production and reads policy, payee, Leash, balance, registry
-entry and the running wasm hash back from the chain. Red since 08-07, green from this run.
-The relay admits the factory by address (`web/src/lib/treasuryWasm.ts`), so the treasury it
-deploys inside the call needs no separate sponsorship.
+The factory has no admin: the treasury wasm, the registry and the accepted tokens with their
+deposit caps are pinned at its own deploy (v4.1: a single cap had meant 100 XLM and 100 USDC
+alike, two bounds about six times apart). Raising a cap means a new factory; a treasury keeps
+the cap it was born with. The registry refuses to list a treasury whose admin is not the
+owner, and has `unregister` (review H2); the app also checks that a treasury it opens runs the
+shipped wasm, since a contract can claim any admin. The compliance verifier (ZK) is not part of the beta; see `SECURITY.md`.
 
-## Treasury v4 — monthly budget, payee caps, task budgets, deposit cap (2026-10-19)
+## Treasury v4 — what every treasury enforces
 
-The limits users asked for in the first Instaward's sessions, and the deposit cap the mainnet
-beta runs under while the code is unaudited. `cargo test -p treasury` → 91 (28 new in
-`test_v4.rs`), `cargo test -p treasury_factory` → 12.
+Monthly budget, payee caps, task budgets and a deposit cap on top of the v3 policy gate.
+`cargo test -p treasury` → 91, `cargo test -p treasury_factory` → 12.
 
 - **Monthly budget** — `set_monthly_limit`; agent-moved value per UTC calendar month
   (`month_of`: integer civil-from-days, no host call), charged at escrow commitment.
@@ -328,150 +39,119 @@ beta runs under while the code is unaudited. `cargo test -p treasury` → 91 (28
 - **Deposit cap** — a constructor argument with no setter; `deposit` refuses to take the
   balance over it. A bare SAC transfer to the address cannot be refused by any contract, so
   the cap binds every client that funds through `deposit` — the app and the factory do.
-- Codes: 14 `ExceedsPayeeCap` · 15 `ExceedsMonthlyLimit` · 16 `ExceedsDepositCap` ·
-  17 `PayeeOutsideTaskBudget`. 13 is skipped on purpose (the token's `TrustlineMissing`).
 
-| Item | Value |
-|---|---|
-| Treasury v4 wasm | `c11a5c63e610be259cdcf23d276fdf6f3069fdc6069c4d713b52d556f24238ec` — upload [`7b7cdfdf…ecae8`](https://stellar.expert/explorer/testnet/tx/7b7cdfdf6c858ab14f279ebe0d56b3785a68cef0485b5880bf6b2c3c51cfefa7) |
-| **Factory v4** (deposit cap 1,000 XLM, registry `CBEPVXK6…4ZE7`) | [`CAP7SNLZ…MANFK`](https://stellar.expert/explorer/testnet/contract/CAP7SNLZZT6VGC7ULSBTGPIGTC5EBAFSDMA37YFYTIROJUTIYXTMANFK) — deploy [`08d8aeaa…2920`](https://stellar.expert/explorer/testnet/tx/08d8aeaaf5b8f90c4ea4058a4046a87334e1191e317b7c63d9f55bae836e2920) |
-| Smoke treasury (`alice`; daily 100 / per-payment 10 / month 30 XLM; `service` capped at 15 XLM a month; 50 XLM through `deposit`) | [`CCRYLUMM…L6DB`](https://stellar.expert/explorer/testnet/contract/CCRYLUMMDGXVO6AO4ABACVONRAXFRDMV75HS3VTYPBFY74QSLU2BL6DB) — one tx, events `payee_add`, `payee_cap`, `monthly`, `deposit`, `created` |
+## Error codes
 
-Verified live on the smoke treasury:
+`1` InvalidAmount · `2` PayeeNotWhitelisted · `3` ExceedsTaskLimit · `4` ExceedsDailyLimit ·
+`5` BelowReputationThreshold · `6` InsufficientFreeBalance · `7` EscrowNotFound · `8` DeadlineNotReached ·
+`9` Paused · `10` ExceedsSessionLimit · `11` InvalidLimits · `12` InvalidDeadline ·
+`14` ExceedsPayeeCap · `15` ExceedsMonthlyLimit · `16` ExceedsDepositCap · `17` PayeeOutsideTaskBudget.
+13 is skipped on purpose: it is the token contract's `TrustlineMissing`, and a failure inside
+the token surfaces with the token's own numbering.
 
-| Check | Result |
-|---|---|
-| pay 10 XLM to `service` | [`58c2a530…c44d`](https://stellar.expert/explorer/testnet/tx/58c2a5304d811506d85ba648210b8802a47067303e2ad648c1dc515e37dec44d) |
-| a further 6 XLM to `service` (cap 15) | refused, `Error(Contract, #14)` |
-| `deposit` up to the 1,000 XLM cap, then 1 stroop more | [`9021d62f…e820`](https://stellar.expert/explorer/testnet/tx/9021d62fdbd4cbd36a361f2c5f87f82782aee58a78e3d4937988e2f18ee6c820) · refused, `#16` · withdrawn [`1ae1ca48…ecae8`](https://stellar.expert/explorer/testnet/tx/1ae1ca48bd75f8d3da5a8971a7d71a926291146086237f42f732b4d8606ecae8) |
-| task budget for `agent` naming only `alice` | [`814bbdb5…92ed`](https://stellar.expert/explorer/testnet/tx/814bbdb5f971a7ff9e87b861209eb0661f81bfc4a80a6984d3773847b89492ed); `agent` paying `service` → `#17`; paying `alice` → [`c69fa1ad…dfa`](https://stellar.expert/explorer/testnet/tx/c69fa1ad1a9f87def3eaa7a14cb647f8cb4e29d7820a28fc2ca3a115aa5bedfa) |
-| monthly budget set to exactly the 11 XLM spent, then 1 stroop | [`b003a1f6…6811`](https://stellar.expert/explorer/testnet/tx/b003a1f674b35a3b50da3e85701559657afaf8a801d259a63b8a6e7344496811) · refused, `#15` |
-| factory address prediction (salt `a4e1b0c7…f809`) | [`538d80f2…95ad`](https://stellar.expert/explorer/testnet/tx/538d80f292cbff4f2f107a32889c457bd9c46232298dc55048aa56b0911495ad) → `CAJHWB3E…4B25`, pinned in `createTreasury.test.ts` |
+## The app and its relay — Cloudflare
 
-### Agents buying services — float, x402, task budget (eunomia-mcp 0.3.0)
+`web/wrangler.jsonc` + `web/worker/index.ts`: the built app as Workers static assets,
+`/api/relay` handled by the host-neutral `src/lib/relayHandler.ts`, and `/api/rpc` by
+`src/lib/rpcProxy.ts`. Deploy: `npm run deploy:cf`.
 
-`packages/mcp/scripts/live-spend.ts` drives eunomia-mcp's own code against testnet: a fresh v4
-treasury [`CD2FOPKK…H3GI`](https://stellar.expert/explorer/testnet/contract/CD2FOPKKLJEFU7CWUTIG77ZHJVJLLBAMWJ5XVYFAFKCDGUYIVPCAH3GI)
-(owner `alice`; the agent's own address capped at 4 XLM a month), a task budget naming the agent
-and one vendor, and a local seller whose 402 is verified and settled by the official
-`@x402/stellar` facilitator.
-
-| Step | Result |
-|---|---|
-| `fund_float` 3 XLM (treasury `pay()` to the agent) | [`c5c578c4…d5cf`](https://stellar.expert/explorer/testnet/tx/c5c578c4d2ec7cc4e391f7517bfc044cb0d284eb88bbe4842e3022902cddd5cf) |
-| `call_service`: 402 → signed from the float → settled to the vendor, answer returned | [`9d4b23f1…d472`](https://stellar.expert/explorer/testnet/tx/9d4b23f11b85e34f45047308409021fc6e6bd65f480bfb98aa6b3e719e6fd472) |
-| `call_service` to a payee the treasury never approved | refused before signing — not approved, outside the task budget |
-| `fund_float` 2 XLM more (cap 4) | refused, `#14 ExceedsPayeeCap` |
-| `sweep_float` 2 XLM back | [`f05e8ef0…d7c2`](https://stellar.expert/explorer/testnet/tx/f05e8ef012668b92c80997b244cf6eab2d6799aa5b559ecae27667a430a7d7c2); treasury ends at 19 XLM (20 − 3 + 2) |
-
-Why a float and not the treasury paying the 402 itself: [`docs/MPP-DIRECT-SETTLEMENT.md`](docs/MPP-DIRECT-SETTLEMENT.md).
-
-The app creates through the v4 factory; the relay keeps admitting the v3.5 factory and wasm
-(`LEGACY_TREASURY_*` in `web/src/lib/treasuryWasm.ts`), so earlier treasuries keep working.
-
-## Cloudflare — the app and its relay off Vercel (2026-10-19, preview)
-
-`web/wrangler.jsonc` + `web/worker/index.ts`: the built app as Workers static assets, and
-`/api/relay` and `/api/faucet` handled by the same host-neutral handlers Vercel's `api/*` call
-(`src/lib/relayHandler.ts`, `src/lib/faucetHandler.ts`). Deploy: `npm run deploy:cf`.
-
-- **Relay per network.** `RELAY_NETWORK=testnet` (default) admits native-XLM moves, the
-  factories and our treasury wasm. `pubnet` admits only `RELAY_FACTORY_ID` and the treasury
-  wasm — no native XLM (a v4 treasury is funded through `deposit`) — needs `RELAY_RPC_URL`
-  and `RELAY_DAILY_BUDGET_XLM`, and refuses to sponsor anything without both limiters and
-  the budget bound.
+- **Build settings.** `npm run build` refuses to start until `EUNOMIA_RPC_URL`,
+  `EUNOMIA_FACTORY_ID` and `EUNOMIA_REGISTRY_ID` are set (`web/src/networks.ts`). For a
+  deployed build the RPC is the app's own `https://<host>/api/rpc`.
+- **The RPC behind a key (2026-10-24).** The provider (Validation Cloud, free plan) is reached
+  through a URL that carries the account key, so it is the worker secret `RELAY_RPC_URL` and
+  never enters the bundle. `/api/rpc` forwards one JSON-RPC call per request, only the methods
+  the app uses (reads, `simulateTransaction`, `sendTransaction`), at most 64 KB, behind
+  `RPC_LIMITER` (300 a minute per IP), and fails closed without the secret or the limiter. It
+  adds no authority: anything sent through it could go to any public RPC. The chain indexer
+  takes the same URL as its secret `RPC_URL`. `check:no-secrets` fails any bundle that carries a secret
+  seed, a test-network endpoint or the retired demo's addresses; CI builds with stand-in ids
+  on every push.
+- **What the relay pays for.** `RELAY_FACTORY_ID`, the contracts in `RELAY_ALLOWED_CONTRACTS`,
+  and contracts running a wasm we ship (the treasury, in code; the passkey wallet, through
+  `RELAY_ALLOWED_WASM`). No native-XLM transfers: a treasury is funded through its own
+  `deposit`. `RELAY_RPC_URL` (a secret) and `RELAY_DAILY_BUDGET_XLM` are required, and nothing is
+  sponsored without both limiters and the budget bound. The fee account is `RELAY_SECRET`.
 - **Rate limits.** `RELAY_LIMITER`: 20 requests a minute per client IP; `RELAY_WALLET_LIMITER`:
   10 a minute per signing wallet; each per Cloudflare location. Cloudflare documents them as
   permissive and eventually consistent; a 120-request burst returned 10 × 429. They slow a
   caller down; they do not bound the bill.
 - **Fee limits (2026-10-22, review M2).** Every transaction is priced before it is sent
   (inclusion fee plus the padded resource fee: the most it may cost) and refused when it
-  costs more than `RELAY_MAX_FEE_XLM` (default 1; a factory create measures 0.32 XLM of
-  resource fee), would leave the fee account under `RELAY_MIN_BALANCE_XLM` (pubnet default
-  5; logged as `fee account below floor`, the line to alert on), or would take the UTC day
-  past `RELAY_DAILY_BUDGET_XLM`. The day's total lives in one Durable Object (`RELAY_BUDGET`,
+  costs more than `RELAY_MAX_FEE_XLM` (default 1; a factory create measured 0.32 XLM of
+  resource fee), would leave the fee account under `RELAY_MIN_BALANCE_XLM` (default 5; logged
+  as `fee account below floor`, the line to alert on), or would take the UTC day past
+  `RELAY_DAILY_BUDGET_XLM`. The day's total lives in one Durable Object (`RELAY_BUDGET`,
   `worker/relayBudget.ts`) so every instance charges the same counter; an unreachable counter
-  refuses. Testnet runs with 200 XLM a day. A send rejected `txBadSeq` (two requests on the
-  same fee-account sequence) is rebuilt on the fresh sequence, up to three sends, charged once.
+  refuses. A send rejected `txBadSeq` (two requests on the same fee-account sequence) is
+  rebuilt on the fresh sequence, up to three sends, charged once.
 - **Strict CSP** (`scripts/headers.mjs` → `dist/_headers`): `script-src 'self'` plus the hash
   of every inline script in the build (the docs' page-hash map changes with the docs, so the
   hashes are computed after `vite build`, CRLF-normalised the way the browser parses them),
-  `connect-src` limited to Stellar, Supabase, WalletConnect, the anchor and the analytics
-  beacon, `frame-ancestors 'none'`. Probed with Chromium across the landing, app pages,
-  wallet modal and docs: no violations.
-- **Mainnet web build (2026-10-23, review M5).** The network is chosen by the build, not by
-  editing a file: `npm run build` is testnet, `npm run build:mainnet` (`vite build --mode
-  mainnet`) is pubnet. `web/src/networks.ts` holds both tables; the mainnet one leaves the RPC,
-  factory, registry and deposit cap empty, and the build refuses to start until each is set
-  there or as `EUNOMIA_RPC_URL` (a trusted provider, never a public default: its simulation
-  decides what a passkey signs over), `EUNOMIA_FACTORY_ID`, `EUNOMIA_REGISTRY_ID`,
-  `EUNOMIA_DEPOSIT_CAP` (whole token units). The guided demo and its embedded agent key live
-  in `web/src/demo/` and are reachable only behind the build's network constant, so a mainnet
-  bundle has no demo chunk at all; the TRY anchor sandbox, friendbot, the in-browser Leash key
-  and the sample vendor are testnet-only too. `check:no-secrets` reads the network from
-  `dist/build-info.json` (written by the build) and fails a mainnet bundle that holds any secret
-  seed, the demo's addresses or a testnet RPC/Horizon host; CI builds a mainnet bundle with
-  stand-in ids on every push. The CSP adds the pinned RPC's origin and drops the anchor.
-- **Mainnet USDC deposits (2026-10-23).** With the anchor out, a USDC treasury is funded the
-  way an XLM one is: the owner's wallet (classic or passkey) calls the treasury's `deposit`,
-  which moves the treasury's own token under the same cap. The fund form shows the wallet's
-  USDC first, read from the SAC (a missing trustline reads as 0). A failed deposit is worded by
-  `depositErr`: only #1 and #16 are the treasury's, every other code is the token's — the SAC's
-  #10 (short balance) had been shown as "over the session's spending cap", on XLM deposits too.
-  The factory's cap is one number in whole units for both tokens, so 100 means 100 XLM or
-  100 USDC.
-
-| Item | Value |
-|---|---|
-| Preview | https://eunomia-app.l3ekirerdem.workers.dev (passkeys stay on eunomia.finance: rp.id) |
-| A relayed call through the worker, confirmed on the ledger | [`9f89402c…10e0`](https://stellar.expert/explorer/testnet/tx/9f89402c9dd96d2bb74e3863b4352d6536aa16b8b04b287e8004fdf74f6b10e0) |
+  `connect-src` limited to Stellar, the pinned RPC's origin, Supabase, WalletConnect and the
+  analytics beacon, `frame-ancestors 'none'`.
+- **USDC deposits (2026-10-23).** A USDC treasury is funded the way an XLM one is: the owner's
+  wallet (classic or passkey) calls the treasury's `deposit`, which moves the treasury's own
+  token under the same cap. The fund form shows the wallet's USDC first, read from the SAC (a
+  missing trustline reads as 0). A failed deposit is worded by `depositErr`: only #1 and #16
+  are the treasury's, every other code is the token's. Each token has its own cap in the
+  factory (v4.1), so the bound is the same in dollars whichever token a treasury holds.
+- **No test network, no keys in the app (2026-10-24).** The guided demo, its embedded agent
+  key, the in-browser Leash key, friendbot, the faucet and the TRY anchor sandbox are gone
+  from the code; the Leash is always the agent's own key, registered by its public half.
 
 Moving eunomia.finance itself is a DNS change (Porkbun → Cloudflare) and the last step.
 
-## Anchor leg — the USDC a TRY-funded treasury holds
-
-A treasury funded with TRY through the SEP-6 anchor (`tr-mock-anchor.fly.dev`) holds the anchor's
-USDC rather than the demo USDC above. Its Stellar Asset Contract is derived from the issuer and
-pinned in `web/src/lib/token.ts` (`token.test.ts` asserts the derivation).
-
-| Item | Value |
-|---|---|
-| USDC issuer (the anchor's) | `GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5` |
-| **USDC SAC** (`USDC:GBBD47IF…FLA5`) | [`CBIELTK6…DAMA`](https://stellar.expert/explorer/testnet/contract/CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA) |
-
-Architecture, what is simulated and the testnet run with transaction hashes:
-[`docs/ANCHOR.md`](docs/ANCHOR.md#verified-on-testnet-2026-09-18).
-
-## ZK attestation in the loop — a period of real agent payments, attested (2026-09-28 → 29)
-
-Treasury `CDVCLLGG…YNJ2` (XLM, per-payment 10, daily 100), verifier `CD3TB3F4…DYZ3`. The
-agent pays through the published `eunomia-mcp` 0.2.1; the proof is built by
-`circuits/scripts/prove-and-submit.ts` from the treasury's own `paid` events, over a payee
-root rebuilt from real addresses (`packages/prover/src/payeeField.ts`).
-
-| Step | Result |
-| --- | --- |
-| `set_session` — agent `GB4GJNEZ…2QXZ`, 30 XLM, 7 days | [`37ee3c6f…`](https://stellar.expert/explorer/testnet/tx/37ee3c6f123339cbbcae4308213b5e0539f5f9e236821a17e2c5067628e69ea7) |
-| agent pays 2.5 → `service` · 4 → `supplier` · 1.5 → `service` | [`54deb8b7…`](https://stellar.expert/explorer/testnet/tx/54deb8b7b21fdd6e45ed3b6591a1758a4f53f248749bde84f591f7f5b51645ea) · [`0935cb2e…`](https://stellar.expert/explorer/testnet/tx/0935cb2e85afd10427f918e22b56f39ce8e85d4a32b2a2c789352442fdf31401) · [`b6b4ea45…`](https://stellar.expert/explorer/testnet/tx/b6b4ea452400166924e60ba1bbf697817c676c226d920196aafe677990e4c235) |
-| agent tries 15 → `service`, `--record-rejection` | [`d48e7ff8…`](https://stellar.expert/explorer/testnet/tx/d48e7ff8fdc0f93a5972d0d783e3861f29a3baebb96c5f82b2c9ff545e00f3b5) — ledger 4915565, **FAILED**, `Error(Contract, #3)` |
-| `period_spent(20724)` | `80000000` — equal to the three `paid` events |
-| `set_whitelist_root` — root over `service` + `supplier`, each confirmed with `is_payee` | [`714ed902…`](https://stellar.expert/explorer/testnet/tx/714ed9028d1b4674bc7f14db3b8719887e2039ae166aecf2a7a92b94621261b2) → `095aa6fc…1ccd` |
-| proof submitted while the period was still open | refused in simulation, `Error(Contract, #6)` PeriodNotClosed |
-| **`verify` for period 20724, after it closed** | [`4abba703…`](https://stellar.expert/explorer/testnet/tx/4abba7034041f956e417cd3c6b180d170439033f0e09afd0ddca702b67944940) — ledger 4933698, `attested` · `last_period` → `20724` |
-| `check-attestation.ts --tx 4abba703…` | 7/7 checks, `attested` — the verifier re-ran the pairing check, and limits, root and total match the treasury |
-
-## Usage metrics — chain indexer (2026-10-13)
+## Usage metrics — chain indexer
 
 `activity` only sees what the web app logs; payments an agent makes through eunomia-mcp never
-reached it. `workers/chain-indexer` is a Cloudflare Worker that, every 15 minutes, pages Stellar
+reach it. `workers/chain-indexer` is a Cloudflare Worker that, every 15 minutes, pages Stellar
 RPC events for the registry (`regd`) and every known treasury (`paid`, `session`, `revoked`,
-`withdrawn`, escrow, payee and limit changes) into Supabase (migration `0006_chain_events`).
-A stored cursor continues where the last run stopped — the RPC keeps only ~7 days of events.
+`withdrawn`, escrow, payee and limit changes) into Supabase (migration `0006_chain_events`),
+each row labelled `mainnet`. A stored cursor continues where the last run stopped — the RPC
+keeps only ~7 days of events.
 
 - Weekly numbers: `select * from chain_weekly;` (new treasuries, sessions, payments, paying
   treasuries, repeat treasuries = paid on 2+ distinct days).
-- Deploy: `cd workers/chain-indexer && npm i && npx wrangler secret put SUPABASE_URL &&
-  npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY && npx wrangler deploy`.
-- Mainnet: a second deploy with `NETWORK=mainnet`, the mainnet RPC and registry id in `vars`.
-- Local run against the real RPC (first backfill, 2026-10-13): 13 pages, 17 registrations,
-  16 sessions, 7 payments, 1 revoke across 16 treasuries in the retained window.
+- Deploy: set `RPC_URL` and `REGISTRY_ID` in `wrangler.jsonc`, then `cd workers/chain-indexer &&
+  npm i && npx wrangler secret put SUPABASE_URL && npx wrangler secret put
+  SUPABASE_SERVICE_ROLE_KEY && npx wrangler deploy`.
+
+## Retired testnet history
+
+Everything below ran on Stellar testnet before the mainnet beta (2026-07 → 2026-10-23). The
+test network is no longer used by any part of Eunomia and its state is wiped on SDF's resets;
+the transaction-level record (addresses, hashes, ledgers) is in this file's git history up to
+2026-10-23. What was measured there:
+
+- **Policy gate on chain.** A rogue payment to a non-whitelisted address reverted with
+  `#2`; over-cap payments with `#3` / `#4`; a paused treasury refused with `#9` while
+  `admin_withdraw` still worked; a lowered per-payment limit applied to the very next call.
+- **Agent sessions (v3).** The session key was the only spender while active (the root
+  agent's signature stopped authorising `pay`), over-cap refused with `#10`, revoke restored
+  the root agent. Escrow commitments counted against the daily limit at creation (v3.3).
+- **Reputation and escrow (v2).** A non-whitelisted payee above the reputation threshold was
+  paid; escrow released on approval and refunded after its deadline.
+- **Treasury factory.** One owner signature created a treasury with policy, payee, Leash,
+  funding and registry entry — from a wallet and from a passkey on the live site, where the
+  authenticator's counter moved by exactly one across the create step.
+- **v4.** A payee cap refused the payment past it (`#14`), the deposit cap refused one stroop
+  over (`#16`), a task budget refused a payee it did not name (`#17`), a monthly budget set to
+  exactly what was spent refused one stroop more (`#15`), and the factory's address
+  prediction matched the deployed treasury.
+- **eunomia-mcp.** The agent's own key paid in budget over MCP, was refused in simulation with
+  the contract's codes, recorded one refusal on the ledger (`--record-rejection`, `#3`), filed
+  an exception request that turned `approved` once the owner approved the payee, and closed it
+  with the payment. 0.3.0 funded a float, bought from an x402 seller settled by the official
+  `@x402/stellar` facilitator, was refused a payee outside its task budget and over its payee
+  cap, and swept the rest back.
+- **ZK compliance.** The verifier refused a valid proof of a fabricated batch
+  (`SpendMismatch`), an open period and a replay, and attested a closed period of real agent
+  payments whose total equalled the treasury's `period_spent`.
+- **Relay on Cloudflare.** A passkey call relayed through the worker confirmed on the ledger.
+- **Testers.** 18 external testers (16 with on-chain proof: 12 wallets registered in the
+  registry, 9 of which funded their treasury, plus 4 from before the registry existed; 2 who
+  explored and reported back), 17 treasuries they deployed, 22 funding and payment
+  transactions, 16 payments the contract refused; 14 feedback responses averaging 4.9 / 5.
+  Our own and end-to-end wallets were excluded (`docs/metrics/e2e-exclude.json`); the
+  cumulative count is `docs/metrics/registered-users.json`.

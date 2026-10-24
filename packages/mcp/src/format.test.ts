@@ -28,7 +28,7 @@ test("fromStroops renders whole + trimmed fraction", () => {
 
 test("urls + short address", () => {
   const h = "ab".repeat(32);
-  assert.equal(txUrl("testnet", h), `https://stellar.expert/explorer/testnet/tx/${h}`);
+  assert.equal(txUrl("pubnet", h), `https://stellar.expert/explorer/public/tx/${h}`);
   assert.equal(contractUrl("pubnet", "CABC"), "https://stellar.expert/explorer/public/contract/CABC");
   assert.equal(shortAddr("GDPKXL6CNHUXBV4PM54CPTRZNQRYVTIMO4YGBW3M2MNSCMQ7TTNINXP6"), "GDPK…NXP6");
   assert.equal(shortAddr("short"), "short");

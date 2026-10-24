@@ -17,7 +17,7 @@ describe("inToken", () => {
   });
 
   it("touches amounts only — not the word on its own", () => {
-    expect(inToken({ label: "Wallet funded with testnet XLM" }, "USDC").label).toBe("Wallet funded with testnet XLM");
+    expect(inToken({ label: "Wallet funded with XLM" }, "USDC").label).toBe("Wallet funded with XLM");
   });
 
   it("keeps every other field of the row", () => {

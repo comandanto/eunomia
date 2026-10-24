@@ -1,11 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
-import { Address, scValToNative } from "@stellar/stellar-sdk";
+import { Address, rpc, xdr } from "@stellar/stellar-sdk";
 import {
-  deployTreasury,
   makeTreasury,
   isOwnedBy,
   isValidContractId,
   readLifecycle,
+  runsTreasuryCode,
   toStroops,
   TREASURY_WASM_HASH,
   XLM_SAC,
@@ -38,33 +38,6 @@ describe("makeTreasury", () => {
     const g = "GDPKXL6CNHUXBV4PM54CPTRZNQRYVTIMO4YGBW3M2MNSCMQ7TTNINXP6";
     const t = makeTreasury(DEPLOYED, executor(g, "wallet"));
     expect((t.client.options as { publicKey?: string }).publicKey).toBe(g);
-  });
-});
-
-describe("deployTreasury", () => {
-  it("deploys through the session's own deploy path when it has one", async () => {
-    // A passkey session cannot deploy from a transaction source account: the smart wallet
-    // holds no XLM, and the relayer that pays for it rejects source-account authorisation.
-    const deployContract = vi.fn().mockResolvedValue(DEPLOYED);
-    const executor = {
-      address: SMART_WALLET,
-      kind: "passkey",
-      signer: { signTransaction: vi.fn() },
-      submit: vi.fn(),
-      deployContract,
-    } as unknown as TxExecutor;
-
-    await expect(deployTreasury(executor, 100, 10)).resolves.toBe(DEPLOYED);
-
-    const [wasmHash, args] = deployContract.mock.calls[0];
-    expect(wasmHash).toBe(TREASURY_WASM_HASH);
-    // admin and agent are both the smart wallet: ownership rides on the constructor
-    // arguments, never on whoever submitted the transaction.
-    expect(Address.fromScVal(args[0]).toString()).toBe(SMART_WALLET);
-    expect(Address.fromScVal(args[1]).toString()).toBe(SMART_WALLET);
-    expect(Address.fromScVal(args[2]).toString()).toBe(XLM_SAC);
-    expect(scValToNative(args[3])).toBe(toStroops(100));
-    expect(scValToNative(args[4])).toBe(toStroops(10));
   });
 });
 
@@ -169,5 +142,45 @@ describe("isOwnedBy", () => {
 
   it("rejects when no wallet is connected", () => {
     expect(isOwnedBy({ admin: ME } as EunomiaState, null)).toBe(false);
+  });
+});
+
+// A contract can say anything about its admin; it cannot choose the code hash in its own
+// instance entry. That is what decides whether the app believes the rest.
+describe("runsTreasuryCode", () => {
+  const instanceOf = (executable: xdr.ContractExecutable) => ({
+    latestLedger: 1,
+    entries: [
+      {
+        val: xdr.LedgerEntryData.contractData(
+          new xdr.ContractDataEntry({
+            ext: new xdr.ExtensionPoint(0),
+            contract: new Address(DEPLOYED).toScAddress(),
+            key: xdr.ScVal.scvLedgerKeyContractInstance(),
+            durability: xdr.ContractDataDurability.persistent(),
+            val: xdr.ScVal.scvContractInstance(new xdr.ScContractInstance({ executable, storage: null })),
+          }),
+        ),
+      },
+    ],
+  });
+  const answer = (r: unknown) =>
+    vi.spyOn(rpc.Server.prototype, "getLedgerEntries").mockResolvedValueOnce(r as rpc.Api.GetLedgerEntriesResponse);
+
+  it("accepts the treasury code the factory ships", async () => {
+    answer(instanceOf(xdr.ContractExecutable.contractExecutableWasm(Buffer.from(TREASURY_WASM_HASH, "hex"))));
+    await expect(runsTreasuryCode(DEPLOYED)).resolves.toBe(true);
+  });
+
+  it("refuses any other code, however it describes itself", async () => {
+    answer(instanceOf(xdr.ContractExecutable.contractExecutableWasm(Buffer.alloc(32, 7))));
+    await expect(runsTreasuryCode(DEPLOYED)).resolves.toBe(false);
+  });
+
+  it("refuses an asset contract and an id with nothing behind it", async () => {
+    answer(instanceOf(xdr.ContractExecutable.contractExecutableStellarAsset()));
+    await expect(runsTreasuryCode(DEPLOYED)).resolves.toBe(false);
+    answer({ latestLedger: 1, entries: [] });
+    await expect(runsTreasuryCode(DEPLOYED)).resolves.toBe(false);
   });
 });

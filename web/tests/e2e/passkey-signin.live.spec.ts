@@ -3,9 +3,9 @@
 // wallet. Before 2026-09-16 the landing page only knew how to create, so every return visit
 // minted a fresh wallet (and a fresh recovery code) for a user who already had one.
 //
-// Runs against production for the same reason passkey.live.spec.ts does: the passkey is bound
-// to rp.id eunomia.finance and the relay that deploys the wallet is Production-scoped.
-// Costs one relay-sponsored deploy per run; no faucet allocation (no treasury is created).
+// Runs against production: the passkey is bound to rp.id eunomia.finance and the relay that
+// deploys the wallet is Production-scoped. Costs one relay-sponsored wallet deploy per run —
+// a real mainnet fee — and creates no treasury.
 //
 //   npx playwright test --config playwright.live.config.ts passkey-signin
 import { test, expect, type CDPSession, type Page } from "@playwright/test";
@@ -35,7 +35,7 @@ test.describe.serial("Live passkey sign-in", () => {
   }) => {
     test.info().annotations.push({
       type: "network",
-      description: "Drives eunomia.finance, the relay and Stellar testnet for real",
+      description: "Drives eunomia.finance, the relay and Stellar mainnet for real",
     });
     const consoleErrors: string[] = [];
     page.on("console", (m) => {

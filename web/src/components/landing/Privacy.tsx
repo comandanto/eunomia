@@ -1,4 +1,5 @@
-/** Confidential mode, as a promise rather than a mechanism.
+/** Confidential mode, as a promise rather than a mechanism — and said to be coming, because
+ *  it is not in the mainnet app yet (the proof's verifier is not deployed there).
  *
  *  Deliberate vocabulary ban on this page: "zero-knowledge", "Groth16", "BN254" and
  *  "Sealed Receipt" all live in the docs now. A finance lead does not buy a proof system;
@@ -10,8 +11,8 @@ export default function Privacy() {
         <h2 className="lp__reveal--head">Prove you followed the rules — without showing the numbers.</h2>
         <p className="lp__lede lp__reveal">
           On a public chain every payment is readable: what you spend, who you pay, what your
-          margin is. Confidential mode keeps those private while still proving to anyone that
-          each payment stayed inside your policy.
+          margin is. Confidential mode, coming after the beta, keeps those private while still
+          proving to anyone that each payment stayed inside your policy.
         </p>
 
         <div className="lp__cards">

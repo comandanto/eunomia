@@ -1,7 +1,7 @@
 # Eunomia — web
 
-The app for [Eunomia](../README.md): the landing page, the per-user product (sign in with
-a passkey or a wallet → run your own bounded treasury), and the autonomous-agent demo.
+The app for [Eunomia](../README.md): the landing page and the per-user product (sign in with
+a passkey or a wallet → run your own bounded treasury), on Stellar mainnet.
 Vite · React 19 · TypeScript · GSAP + framer-motion · `@stellar/stellar-sdk` ·
 `passkey-kit` · StellarWalletsKit.
 
@@ -9,124 +9,69 @@ Vite · React 19 · TypeScript · GSAP + framer-motion · `@stellar/stellar-sdk`
 
 ```bash
 npm install
-npm run dev        # http://localhost:5173
+cp .env.example .env.local   # fill in the EUNOMIA_* settings (see Environment)
+npm run dev                  # http://localhost:5173
 ```
 
 ## Test · build · lint
 
 ```bash
 npm test           # Vitest — pure-lib suites (wallet errors, events, funding, treasury ops…)
-npm run build      # tsc -b && vite build
-npm run lint       # eslint (known legacy debt in generated treasuryClient.ts)
+npm run build      # docs, tsc -b, vite build, security headers, check:no-secrets
+npm run lint       # eslint
 ```
 
-## E2E · Playwright smoke
+Unit tests never reach a chain: under Vitest the build settings fall back to stand-in values
+(`STAND_IN_ENV` in `src/networks.ts`) whose RPC host cannot resolve.
 
-Browser-level tests against the **real Stellar testnet**. One spec drives the actual
-UI through the connect → deploy → fund → whitelist → pay happy path using an
-injected test signer (no wallet extension automation).
+## Live check · Playwright
 
-### One-time setup
-
-1. Install Playwright's browser binary + system deps for Chromium:
-   ```bash
-   npm run test:e2e:install
-   ```
-
-2. Generate a throwaway testnet key and fund it. The test signs with this key —
-   it must hold ≥ ~25 test XLM (deploy + fund + fee headroom). Either:
-   - Use the Stellar Laboratory's "Create Account" + Friendbot, or
-   - Generate a key with the Node REPL:
-     ```node
-     const { Keypair } = require("@stellar/stellar-sdk");
-     const k = Keypair.random();
-     console.log("Secret:", k.secret());
-     console.log("Public:", k.publicKey());
-     // → then curl https://friendbot.stellar.org/?addr=<public> twice
-     ```
-
-3. Export the secret as an env var — **never commit it to the repo**:
-   ```bash
-   export PLAYWRIGHT_TEST_WALLET_SECRET="S…"
-   ```
-   (Windows PowerShell: `$env:PLAYWRIGHT_TEST_WALLET_SECRET = "S…"`)
-
-### Run the smoke spec
+`tests/e2e/passkey-signin.live.spec.ts` drives the return visit on production: create a
+passkey wallet on eunomia.finance with a virtual authenticator, throw the session away, sign
+in again with the same passkey and land on the same wallet. It runs against the live site
+because a passkey is bound to its rp.id, and it costs one relay-sponsored wallet deploy — a
+real mainnet fee — per run.
 
 ```bash
-npm run test:e2e     # => npx playwright test (chromium, starts vite dev server automatically)
+npm run test:live:install   # Chromium + system deps, once
+npm run test:live
 ```
-
-What the spec does:
-1. **Landing** loads with zero `console.error` / uncaught page errors.
-2. **Workspace** (`#overview`) opens — the Setup page renders the connect gate.
-3. **Connect** — the test-signer injection bypasses the StellarWalletsKit modal.
-   The chip shows the injected `G…` address.
-4. **Friendbot** — auto-requests test XLM when the wallet has none (best-effort).
-5. **Deploy** — creates a fresh treasury with 50 XLM daily / 10 XLM per-task limits.
-6. **Fund** — 20 XLM SAC transfer from the wallet into the new treasury.
-7. **Whitelist** — adds the sample `SERVICE` payee (on-chain `add_payee`).
-8. **Pay** — sends 1 XLM to the whitelisted payee within limits.
-9. **State** — balance ≤ 19 XLM; no uncaught page errors.
-
-On failure, the run writes an HTML report + trace to `playwright-report/`; open it with:
-```bash
-npx playwright show-report
-```
-
-### How the test signer is gated
-
-The injection path lives in `src/lib/testSigner.ts`. It compiles in **only** when
-`VITE_ENABLE_TEST_SIGNER=true` (a compile-time `import.meta.env` flag — the dead
-branch gets tree-shaken out of production builds). At runtime it additionally
-requires the `window.__EUNOMIA_TEST_SIGNER__` global that Playwright injects via
-`addInitScript` — even if the flag accidentally ships, the code is a no-op
-without the global.
-
-```
-walletKit.ts
-  ├─ connect()           ── test-signer global present? → return the injected address, skip modal
-  └─ walletSignerFor()   ── matches the injected address? → sign directly with Keypair
-```
-
-### GitHub Actions (manual)
-
-`.github/workflows/e2e-playwright.yml` defines a **`workflow_dispatch`**-only job
-— testnet RPC flakiness means it does NOT gate every PR. Run it from the repo's
-**Actions → E2E — Playwright smoke (testnet) → Run workflow**.
-
-Requirements in the repo settings:
-- A **repository secret** named `PLAYWRIGHT_TEST_WALLET_SECRET` with the funded testnet key.
-- (Optional) An **environment** named `testnet-e2e` with reviewers, so humans
-  approve each run against the shared key to avoid draining it.
-
-The workflow:
-1. Installs deps + `npx playwright install --with-deps chromium`
-2. Runs the smoke spec with the secret exposed as `PLAYWRIGHT_TEST_WALLET_SECRET`
-3. Uploads `playwright-report/` + `test-results/` as a 14-day retention artifact
-   (screenshots, videos, traces — only populated on failure).
 
 ## Environment
+
+Build-time, public (they end up in the bundle). The build refuses to start without them:
+
+```
+EUNOMIA_RPC_URL=…        # deployed: this app's https://<host>/api/rpc (local dev: the provider URL)
+EUNOMIA_FACTORY_ID=…     # the treasury factory (C…); it holds the deposit cap of each token
+EUNOMIA_REGISTRY_ID=…    # the treasury registry (C…)
+```
+
+The provider's URL carries its account key, so a deployed page never calls it: `/api/rpc`
+(`src/lib/rpcProxy.ts`) forwards an allow-list of JSON-RPC methods to it, with the URL held as
+the worker secret `RELAY_RPC_URL`.
 
 Optional — the app runs without them, but feedback + activity logging silently no-op:
 
 ```
 VITE_SUPABASE_URL=…
 VITE_SUPABASE_ANON_KEY=…   # publishable key; RLS is insert-only (see ../supabase/migrations)
+VITE_WALLETCONNECT_PROJECT_ID=…
 ```
 
-Copy `.env.example` to `.env`. Beware invisible non-ASCII bytes when pasting keys —
+Copy `.env.example` to `.env.local`. Beware invisible non-ASCII bytes when pasting keys —
 `src/lib/supabase.ts` strips them for a reason.
 
 ## Deploy
 
-Vercel, manual (no auto-deploy on push):
+Cloudflare, manual (no auto-deploy on push):
 
 ```bash
-vercel --prod      # aliases eunomia.finance
+npm run deploy:cf   # npm run build, then wrangler deploy
 ```
 
-Env vars must be set in the Vercel dashboard for Production.
+The relay's settings are `vars` in `wrangler.jsonc` (set at deploy) and its fee key is a
+secret: `wrangler secret put RELAY_SECRET`. See `../DEPLOYMENT.md`.
 
 ## Layout
 
@@ -135,10 +80,10 @@ src/components/landing/   the marketing page (hero, proof, how it works, guarant
 src/components/shell/     the product chrome — sidebar/tabs, rules feed, charts, treasury switcher
 src/pages/                Overview · Payments · Agent · Activity · Settings · Setup
 src/lib/                  userTreasury (deploy/fund/pay) · smartWalletTx (act as a passkey wallet)
-                          relaySubmit (fee-sponsored submission) · passkey · walletKit/walletSigner
+                          relayHandler (fee sponsorship) · passkey · walletKit/walletSigner
                           insights (chart series) · events/analytics · activity (Supabase)
-api/                      serverless: /api/relay (fee sponsorship) · /api/faucet (testnet dispenser)
-src/networks.ts           testnet + mainnet tables; the build picks one (build / build:mainnet)
+worker/                   the Cloudflare worker: static assets + /api/relay, and its daily fee budget
+api/                      Vercel's copy of the relay, kept until the domain moves (answers 503: no limiters)
+src/networks.ts           the mainnet table and the build settings that complete it
 src/config.ts             the app's view of that network — public values only
-src/demo/                 the guided demo and its testnet-only agent key; absent from a mainnet build
 ```

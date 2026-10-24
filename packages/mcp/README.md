@@ -4,19 +4,21 @@ Connect any MCP-capable AI agent (Claude Code, Claude Desktop, …) to a [Eunomi
 
 The agent gets a **scoped, revocable credential**. The treasury contract enforces the owner's budget **on-chain** — per-payment cap, rolling 24h limit, approved payees, a time-bound session cap — and refuses anything outside it. The agent never holds the funds and never sees the owner's key.
 
-> Published on npm as [`eunomia-mcp`](https://www.npmjs.com/package/eunomia-mcp). The agent **finds and buys paid services** (the ROZO MPP Router catalog, any x402 seller) from a bounded float, **pays** treasury payees directly, reads every refusal as the **contract's own error code**, and **asks the owner for a task budget** or an exception. Live on **testnet**; the mainnet beta contracts are not deployed yet.
+> Published on npm as [`eunomia-mcp`](https://www.npmjs.com/package/eunomia-mcp). The agent **finds and buys paid services** (the ROZO MPP Router catalog, any x402 seller) from a bounded float, **pays** treasury payees directly, reads every refusal as the **contract's own error code**, and **asks the owner for a task budget** or an exception. Stellar **mainnet** only, in beta: real funds, capped deposits.
 
 ## Connect your agent
 
 **1. Create the agent's credential** (on the machine that runs the agent):
 
 ```bash
-npx eunomia-mcp init --treasury <C…treasury id>
+EUNOMIA_RPC_URL=<a Stellar mainnet RPC> npx eunomia-mcp init --treasury <C…treasury id>
 ```
 
-This generates an Ed25519 key, funds it on testnet (it pays its own transaction fees), stores it at `~/.eunomia/testnet/<treasury>.json` (mode 0600) and prints the **agent public key**. The secret never leaves this machine.
+`EUNOMIA_RPC_URL` is required: there is no public mainnet default, so name a provider you trust ([the list](https://developers.stellar.org/docs/data/apis/rpc/providers)). `init` generates an Ed25519 key, stores it at `~/.eunomia/pubnet/<treasury>.json` (mode 0600) and prints the **agent public key**. The secret never leaves this machine.
 
-**2. The treasury owner authorises that key** — Eunomia dashboard → your treasury → **Agent** → paste the public key, choose a spending cap and a duration → **Start Leash**. That signs one `set_session` transaction with the owner's passkey or wallet. The owner revokes it from the same page at any time (`revoke_session`), instantly.
+The key pays its own transaction fees, so its account needs XLM before it can do anything: send it ~3 XLM (account reserve, the USDC trustline and fees), then run `eunomia-mcp trustline`.
+
+**2. The treasury owner authorises that key** — Eunomia dashboard → your treasury → **Agent** → paste the public key, choose a spending cap and a duration → **Authorise agent**. That signs one `set_session` transaction with the owner's passkey or wallet. The owner revokes it from the same page at any time (`revoke_session`), instantly.
 
 **3. Add the server to your MCP client** — let `init` write it: add `--client claude-desktop`, `--client cursor` or `--client claude-code` to the command in step 1. The client's config file is merged (other servers stay), the old one is kept as `.bak`, and on Windows the server is started through `cmd` so the desktop app finds `npx`. Then restart the client. Without `--client`, `init` prints the snippet and `eunomia-mcp config` prints it again; the manual steps below are for that case. Needs Node 20 or newer.
 
@@ -30,7 +32,7 @@ This generates an Ed25519 key, funds it on testnet (it pays its own transaction 
      "eunomia": {
        "command": "npx",
        "args": ["-y", "eunomia-mcp"],
-       "env": { "EUNOMIA_TREASURY": "<C…>", "EUNOMIA_NETWORK": "testnet" }
+       "env": { "EUNOMIA_TREASURY": "<C…>", "EUNOMIA_RPC_URL": "<https://…>" }
      }
    }
    ```
@@ -43,7 +45,7 @@ If Claude Desktop cannot find `npx` (common when Node came from nvm), set `"comm
 **Claude Code:**
 
 ```bash
-claude mcp add eunomia -e EUNOMIA_TREASURY=<C…> -e EUNOMIA_NETWORK=testnet -- npx -y eunomia-mcp
+claude mcp add eunomia -e EUNOMIA_TREASURY=<C…> -e EUNOMIA_RPC_URL=<https://…> -- npx -y eunomia-mcp
 ```
 
 **Any other MCP client** (Cursor, Antigravity, …) takes the same `mcpServers` JSON shown above in its own config file.
@@ -81,7 +83,7 @@ Stellar's x402 has one scheme, `exact`. Hand `pay` an `accepts[]` entry from a `
 
 Stellar's x402 and MPP facilitators settle from a regular `G…` account only (stellar/stellar-mpp-sdk#90, x402-foundation/x402#3158), so a contract treasury cannot be the payer of a 402 itself. The agent pays from a **float** on its own account instead, and the float is bounded on every side: it is funded by the treasury's own `pay()` (all limits, plus a monthly payee cap on the agent's address), `call_service` signs only within the rules above, and `sweep_float` returns what the task did not use. Almost every ROZO route settles to one router address — approving it opens the catalog, and a cap on it is one bucket for all of it; narrower limits are per call (`maxPrice`) and per task (`request_budget`).
 
-On mainnet the agent's account needs ~3 XLM and a USDC trustline before the first `fund_float`: send the XLM, then `eunomia-mcp trustline --network pubnet`.
+The agent's account needs ~3 XLM and a USDC trustline before the first `fund_float`: send the XLM, then `eunomia-mcp trustline`.
 
 ### Task budgets
 
@@ -101,7 +103,7 @@ Prints the same JSON the tool returns. Exit code `0` paid, `3` refused by policy
 
 ## How the credential works
 
-- The treasury's `set_session(agent, valid_until, limit)` makes one key the **only** spender while active, capped and time-bound; `revoke_session` ends it instantly. That is the whole credential — there is no API key, no server-side secret, nothing to leak but a bounded testnet key.
+- The treasury's `set_session(agent, valid_until, limit)` makes one key the **only** spender while active, capped and time-bound; `revoke_session` ends it instantly. That is the whole credential — there is no API key, no server-side secret, nothing to leak but a key bounded by its cap and its expiry.
 - Root agent, admin and owner keys are never on the agent's machine. The session key signs `pay` (and its own exception requests) locally; the owner only ever signs policy changes.
 - `EUNOMIA_AGENT_SECRET` overrides the file (CI, containers). `EUNOMIA_HOME` moves the store.
 
@@ -110,7 +112,7 @@ Prints the same JSON the tool returns. Exit code `0` paid, `3` refused by policy
 - **Payee listing is rebuilt from events.** The whitelist is not enumerable on-chain, so `list_allowed_payees` replays the contract's `payee_add` / `payee_rm` events (the public RPC keeps ~7 days) and a local cache, then confirms each address with `is_payee`. A payee approved before that window on a machine that never saw it will not be listed — `check_payee` is exact for any address.
 - **Exception requests are visible while the Leash is.** The dashboard reads them from the session agent's account; after a revoke there is no agent to read. There is no "deny" signal yet — an unresolved request simply stays pending until the agent closes it (Week 3 folds requests into the activity feed).
 - **The float is outside the contract.** What `fund_float` moved is the agent's until it is spent or swept; the bounds above keep it small and short-lived, not untouchable. Purchases are logged locally (`float_status`) — the chain records the payment, not the service.
-- **Mainnet beta pending.** `EUNOMIA_NETWORK=pubnet` works (it needs `EUNOMIA_RPC_URL`); the v4 contracts are on testnet today.
+- **Mainnet only.** There is no test-network mode: `EUNOMIA_NETWORK`, if set, must say `pubnet`, and a client config written for another network stops the server instead of signing on mainnet.
 - `check_budget` is a pre-flight. The contract is the final word at payment time; the two use the same rules and the same error codes.
 
 ## SDK
@@ -139,8 +141,9 @@ Deployed addresses, wasm hashes and the on-chain evidence for every claim above 
 npm install
 npm test          # unit tests (node:test)
 npm run build     # dist/
-EUNOMIA_TREASURY=<C…> npm run smoke                 # read tools through the MCP protocol against testnet
-EUNOMIA_TREASURY=<C…> SMOKE_WRITE=1 npm run smoke   # + pay / request_exception / check_exception (spends testnet XLM)
+EUNOMIA_TREASURY=<C…> EUNOMIA_RPC_URL=<…> npm run smoke   # read tools through the MCP protocol
+# + pay / request_exception / check_exception — moves real money, so you name both payees:
+EUNOMIA_TREASURY=<C…> EUNOMIA_RPC_URL=<…> SMOKE_WRITE=1 SMOKE_PAYEE=<G…> SMOKE_EXC_TO=<G…> npm run smoke
 ```
 
 `src/bindings/treasury.ts` is a vendored copy of `packages/treasury-client/src/index.ts` and `src/exceptionCodec.ts` is copied verbatim into the dashboard (`web/src/lib/exceptionCodec.ts`); `npm run check:bindings` and `npm run check:codec` (both in CI) keep the copies byte-identical.

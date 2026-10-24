@@ -9,8 +9,8 @@ import { XLM_SAC, toStroops } from "./userTreasury";
 import { FACTORY_ID, NETWORK_PASSPHRASE, RPC_URL } from "../config";
 
 export interface TreasurySetup {
-  /** The token the treasury holds and spends. XLM when left out; the anchor's USDC for a
-   *  treasury funded with TRY. Every amount below is in this token (both are 7-decimal). */
+  /** The token the treasury holds and spends: XLM when left out, or USDC. Every amount below
+   *  is in this token (both are 7-decimal). */
   token?: string;
   dailyXlm: number;
   perTaskXlm: number;

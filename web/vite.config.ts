@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url'
 import react from '@vitejs/plugin-react'
 import { loadEnv, type Plugin } from 'vite'
 import { configDefaults, defineConfig } from 'vitest/config'
-import { resolveNetwork, type NetworkConfig } from './src/networks'
+import { STAND_IN_ENV, resolveNetwork, type NetworkConfig } from './src/networks'
 
 /** Records which network the bundle was built for, next to the bundle. check:no-secrets and
  *  headers.mjs read this rather than any source file, so they judge what was built. */
@@ -19,18 +19,16 @@ function buildInfo(net: NetworkConfig): Plugin {
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
-  // `vite build --mode mainnet` is the mainnet build; EUNOMIA_* from the environment fill in
-  // what networks.ts leaves for deploy time. Anything missing stops the build here.
+  // EUNOMIA_* from the environment (or .env.local) fill in what networks.ts leaves for deploy
+  // time; anything missing stops the build here. Unit tests never reach a chain, so they run
+  // on stand-in values — a real setting still wins over them.
   const env = loadEnv(mode, process.cwd(), 'EUNOMIA_')
-  const net = resolveNetwork(mode === 'mainnet' ? { ...env, EUNOMIA_NETWORK: 'pubnet' } : env)
+  const net = resolveNetwork(mode === 'test' ? { ...STAND_IN_ENV, ...env } : env)
 
   return {
     plugins: [react(), buildInfo(net)],
     define: {
       global: 'globalThis',
-      // Two separate constants on purpose: the bare string folds in comparisons, so testnet-only
-      // branches (the guided demo and its key among them) drop out of a mainnet bundle.
-      __EUNOMIA_NETWORK__: JSON.stringify(net.name),
       __EUNOMIA_NET__: JSON.stringify(net),
     },
     resolve: {

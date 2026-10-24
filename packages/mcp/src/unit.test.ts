@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { unitFromSymbol } from "./unit.js";
 
 test("a Stellar asset's contract names its code; the native one is spelled XLM", () => {
-  // Both answers below are what the testnet contracts return to symbol() (read 2026-09-18):
-  // USDC's asset contract CBIELTK6… says "USDC", the native one CDLZFC3S… says "native".
+  // Both answers below are what Stellar Asset Contracts return to symbol() (read 2026-09-18):
+  // a USDC asset contract says "USDC", the native one says "native".
   assert.equal(unitFromSymbol("USDC"), "USDC");
   assert.equal(unitFromSymbol("native"), "XLM");
   assert.equal(unitFromSymbol(" EURC "), "EURC");

@@ -42,25 +42,18 @@ jobs:
       - name: Lint
         working-directory: web
         run: npm run lint
-      - name: Test & build
+      - name: Test
         working-directory: web
-        run: |
-          npm test
-          npm run build
-      # The mainnet bundle is built on every push, not first on cutover day, so the gate that
-      # keeps the demo key and testnet endpoints out of it is known to work before it matters.
-      # The ids are stand-ins of the right shape; nothing here is deployed.
-      - name: Mainnet bundle carries no demo, keys or testnet endpoints
+        run: npm test
+      # The real build, gate included (check:no-secrets: no keys, no demo, no test-network
+      # endpoints). The ids are stand-ins of the right shape; nothing here is deployed.
+      - name: Build
         working-directory: web
         env:
-          EUNOMIA_RPC_URL: https://rpc.example.com
+          EUNOMIA_RPC_URL: https://app.example.com/api/rpc
           EUNOMIA_FACTORY_ID: CBQHNAXSI55GX2GN6D67GK7BHVPSLJUGZQEU7WJ5LKR5PNUCGLIMAO4K
           EUNOMIA_REGISTRY_ID: CA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZLKERYNZGGA5SOAOPIFY6YQGAXE
-          EUNOMIA_DEPOSIT_CAP: "100"
-        run: |
-          npx vite build --mode mainnet
-          node scripts/headers.mjs
-          npm run check:no-secrets
+        run: npm run build
 
   circuits:
     name: Circuits — witness tests

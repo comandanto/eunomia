@@ -66,7 +66,8 @@ and the treasury bounds that account from every side:
   budget — one the budget names;
 - `sweep_float` returns what a task did not spend.
 
-Proven end to end on testnet with the official `@x402/stellar` facilitator:
-`packages/mcp/scripts/live-spend.ts` (transactions in [`DEPLOYMENT.md`](../DEPLOYMENT.md)).
+Proven end to end before mainnet with the official `@x402/stellar` facilitator (summary in
+[`DEPLOYMENT.md`](../DEPLOYMENT.md#retired-testnet-history); the script and its transactions
+are in the git history).
 
 We will rerun this test when either issue closes.

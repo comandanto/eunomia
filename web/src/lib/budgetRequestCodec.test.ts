@@ -7,7 +7,7 @@ import { decodeBudgetRequest, encodeBudgetRequest } from "./budgetRequestCodec";
 describe("budget request link", () => {
   const agent = Keypair.random();
   const request = {
-    network: "testnet" as const,
+    network: "pubnet" as const,
     treasury: "CAP7SNLZZT6VGC7ULSBTGPIGTC5EBAFSDMA37YFYTIROJUTIYXTMANFK",
     agent: agent.publicKey(),
     limit: 25_000_000n,

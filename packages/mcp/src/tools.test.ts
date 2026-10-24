@@ -22,7 +22,7 @@ function snap(over: Partial<TreasurySnapshot> = {}): TreasurySnapshot {
 }
 
 test("serializeBudget renders bigints as decimal strings and keeps raw stroops", () => {
-  const out = serializeBudget(computeBudget(snap(), AGENT, NOW, 60_000_000n), "testnet") as Record<string, any>;
+  const out = serializeBudget(computeBudget(snap(), AGENT, NOW, 60_000_000n), "pubnet") as Record<string, any>;
   assert.equal(out.treasury, "CTREASURY");
   assert.equal(out.spendableNow, "10");
   assert.equal(out.spendableNowStroops, "100000000");
@@ -30,7 +30,7 @@ test("serializeBudget renders bigints as decimal strings and keeps raw stroops",
   assert.equal(out.dailyRemaining, "100");
   assert.equal(out.decision.amount, "6");
   assert.equal(out.decision.allowed, true);
-  assert.equal(out.links.contract, "https://stellar.expert/explorer/testnet/contract/CTREASURY");
+  assert.equal(out.links.contract, "https://stellar.expert/explorer/public/contract/CTREASURY");
   assert.equal(typeof out.session.expiresInSec, "number");
   assert.equal(out.session.validUntil, new Date((NOW + 3600) * 1000).toISOString());
   assert.equal(out.session.remaining, "50");
@@ -54,19 +54,19 @@ test("serializeBudget keeps nulls explicit and reputation policy stringified", (
 test("serializeOutcome is transport-safe and links the tx", () => {
   const paid = serializeOutcome(
     { paid: true, txHash: "ab".repeat(32), ledger: 9, to: "GPAYEE", amount: 25_000_000n, taskId: 0n },
-    "testnet",
+    "pubnet",
   ) as Record<string, any>;
   assert.equal(paid.amount, "2.5");
   assert.equal(paid.amountStroops, "25000000");
   assert.equal(paid.taskId, "0");
-  assert.equal(paid.links.tx, `https://stellar.expert/explorer/testnet/tx/${"ab".repeat(32)}`);
+  assert.equal(paid.links.tx, `https://stellar.expert/explorer/public/tx/${"ab".repeat(32)}`);
   assert.doesNotThrow(() => JSON.stringify(paid));
   const refused = serializeOutcome(
     {
       paid: false, stage: "simulation", reasons: [{ code: 3, name: "ExceedsTaskLimit", detail: "d" }], blockers: [],
       message: "m", to: "GPAYEE", amount: 1n, taskId: 0n,
     },
-    "testnet",
+    "pubnet",
   ) as Record<string, any>;
   assert.equal(refused.nextStep, "request_exception");
   assert.equal(refused.links.tx, undefined);
@@ -75,19 +75,19 @@ test("serializeOutcome is transport-safe and links the tx", () => {
 
 test("every amount says what it is an amount of — and says null when nobody could be asked", () => {
   const budget = computeBudget(snap(), AGENT, NOW);
-  const named = serializeBudget(budget, "testnet", "USDC") as Record<string, any>;
+  const named = serializeBudget(budget, "pubnet", "USDC") as Record<string, any>;
   assert.equal(named.unit, "USDC");
   assert.match(named.note, /decimal string in USDC/);
   // `token` stays: the unit is for reading, the contract id is what x402 matching compares.
   assert.equal(named.token, "CTOKEN");
 
-  const unnamed = serializeBudget(budget, "testnet") as Record<string, any>;
+  const unnamed = serializeBudget(budget, "pubnet") as Record<string, any>;
   assert.equal(unnamed.unit, null);
   assert.match(unnamed.note, /in the treasury's token/);
 
   const outcome = { paid: true as const, txHash: "ab".repeat(32), ledger: 9, to: "GPAYEE", amount: 15_000_000n, taskId: 0n };
-  assert.equal((serializeOutcome(outcome, "testnet", "USDC") as Record<string, any>).unit, "USDC");
-  assert.equal((serializeOutcome(outcome, "testnet") as Record<string, any>).unit, null);
+  assert.equal((serializeOutcome(outcome, "pubnet", "USDC") as Record<string, any>).unit, "USDC");
+  assert.equal((serializeOutcome(outcome, "pubnet") as Record<string, any>).unit, null);
 });
 
 test("ownerActionsFor maps codes to what the dashboard can do", () => {

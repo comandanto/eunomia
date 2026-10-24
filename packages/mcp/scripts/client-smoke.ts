@@ -1,13 +1,14 @@
 // Spawns the built server exactly as an MCP client would, lists the tools and drives them
-// against the live testnet treasury, printing each JSON answer. This is the evidence run.
+// against a live treasury, printing each JSON answer. This is the evidence run. It is
+// mainnet: a write run moves real money, so it names no payee of its own.
 //
-//   EUNOMIA_TREASURY=C… npm run smoke              read tools only (Week 1)
-//   SMOKE_WRITE=1 …                               + pay / request_exception / check_exception (Week 2)
+//   EUNOMIA_TREASURY=C… EUNOMIA_RPC_URL=… npm run smoke   read tools only
+//   SMOKE_WRITE=1 …                               + pay / request_exception / check_exception
 //   SMOKE_WRITE=1 SMOKE_EXC_ID=<id> …             second half: after the owner resolved a request
 //
-//   SMOKE_PAYEE=G…        whitelisted payee for the in-policy payment (default: the demo `service` key)
+//   SMOKE_PAYEE=G…        whitelisted payee for the in-policy payment (required with SMOKE_WRITE)
 //   SMOKE_PAY_AMOUNT=2.5  in-policy amount · SMOKE_OVER_AMOUNT=15  over the per-payment cap
-//   SMOKE_EXC_TO=G…       a payee that is NOT whitelisted (default: the demo `supplier` key)
+//   SMOKE_EXC_TO=G…       a payee that is NOT whitelisted (required with SMOKE_WRITE)
 //   SMOKE_EXC_AMOUNT=1    amount of the exception request
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -22,10 +23,14 @@ const env: Record<string, string> = {};
 for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v;
 env.EUNOMIA_TREASURY = treasury;
 
-const PAYEE = process.env.SMOKE_PAYEE ?? "GDOMW4C36BUBBFJW3V4L22LUICOUKFVTPGOYU6UMZZ6D3ENEOCH4QCRT";
-const EXC_TO = process.env.SMOKE_EXC_TO ?? "GAF74ROXHKLAW4JKHJQVYR3O27VTQJF7QA4GLWDBTZACWEPKMPCAVCEZ";
+const PAYEE = process.env.SMOKE_PAYEE ?? "";
+const EXC_TO = process.env.SMOKE_EXC_TO ?? "";
 const EXC_AMOUNT = process.env.SMOKE_EXC_AMOUNT ?? "1";
 const write = process.env.SMOKE_WRITE === "1";
+if ((write || process.env.SMOKE_EXC_ID) && (!PAYEE || !EXC_TO)) {
+  console.error("SMOKE_WRITE moves real money: set SMOKE_PAYEE and SMOKE_EXC_TO to addresses you chose.");
+  process.exit(2);
+}
 
 const transport = new StdioClientTransport({ command: process.execPath, args: ["dist/cli.js", "serve"], env });
 const client = new Client({ name: "eunomia-smoke", version: "0.0.0" });
@@ -51,7 +56,7 @@ if (process.env.SMOKE_EXC_ID) {
 } else {
   await call("check_budget", { amount: process.env.SMOKE_PAY_AMOUNT ?? "2.5" });
   await call("list_allowed_payees", {});
-  await call("check_payee", { address: PAYEE });
+  if (PAYEE) await call("check_payee", { address: PAYEE });
   if (write) {
     await call("pay", { to: PAYEE, amount: process.env.SMOKE_PAY_AMOUNT ?? "2.5", taskId: 402 });
     await call("pay", { to: PAYEE, amount: process.env.SMOKE_OVER_AMOUNT ?? "15", taskId: 402 });

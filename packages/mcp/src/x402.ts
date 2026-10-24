@@ -7,7 +7,7 @@ import type { NetworkName } from "./format.js";
 
 export interface PaymentRequirements {
   scheme: string;
-  /** CAIP-2, e.g. "stellar:testnet" */
+  /** CAIP-2, e.g. "stellar:pubnet" */
   network: string;
   /** atomic units (7 decimals for every Stellar SAC), decimal string */
   amount: string;

@@ -21,9 +21,9 @@ const event = (topic: string[], value: xdr.ScVal): RpcEvent => ({
 
 describe("toRegistration", () => {
   it("reads (regd, owner) -> treasury", () => {
-    const r = toRegistration(event([sym("regd"), b64(addr(OWNER))], addr(TREASURY)), "testnet");
+    const r = toRegistration(event([sym("regd"), b64(addr(OWNER))], addr(TREASURY)), "mainnet");
     expect(r).toEqual({
-      network: "testnet",
+      network: "mainnet",
       treasury_id: TREASURY,
       owner: OWNER,
       registered_at: "2026-10-09T10:00:00Z",
@@ -31,20 +31,20 @@ describe("toRegistration", () => {
   });
 
   it("ignores other registry topics", () => {
-    expect(toRegistration(event([sym("other")], addr(TREASURY)), "testnet")).toBeNull();
+    expect(toRegistration(event([sym("other")], addr(TREASURY)), "mainnet")).toBeNull();
   });
 });
 
 describe("toEventRow", () => {
   it("paid: (paid, task_id) -> (to, amount)", () => {
     const value = xdr.ScVal.scvVec([addr(OWNER), i128(50_000_000n)]);
-    const row = toEventRow(event([sym("paid"), b64(nativeToScVal(7n, { type: "u64" }))], value), "testnet");
+    const row = toEventRow(event([sym("paid"), b64(nativeToScVal(7n, { type: "u64" }))], value), "mainnet");
     expect(row).toMatchObject({ kind: "paid", counterparty: OWNER, amount: "50000000", contract_id: TREASURY });
   });
 
   it("session: (agent, valid_until, limit) keeps the agent and the limit", () => {
     const value = xdr.ScVal.scvVec([addr(OWNER), nativeToScVal(123n, { type: "u64" }), i128(10_000_000n)]);
-    expect(toEventRow(event([sym("session")], value), "testnet")).toMatchObject({
+    expect(toEventRow(event([sym("session")], value), "mainnet")).toMatchObject({
       kind: "session",
       counterparty: OWNER,
       amount: "10000000",
@@ -52,7 +52,7 @@ describe("toEventRow", () => {
   });
 
   it("payee_add: a bare address payload", () => {
-    expect(toEventRow(event([sym("payee_add")], addr(OWNER)), "testnet")).toMatchObject({
+    expect(toEventRow(event([sym("payee_add")], addr(OWNER)), "mainnet")).toMatchObject({
       kind: "payee_add",
       counterparty: OWNER,
       amount: null,
@@ -60,7 +60,7 @@ describe("toEventRow", () => {
   });
 
   it("v4 deposit: (deposit, from) -> amount", () => {
-    expect(toEventRow(event([sym("deposit"), b64(addr(OWNER))], i128(250_000_000n)), "testnet")).toMatchObject({
+    expect(toEventRow(event([sym("deposit"), b64(addr(OWNER))], i128(250_000_000n)), "mainnet")).toMatchObject({
       kind: "deposit",
       counterparty: OWNER,
       amount: "250000000",
@@ -68,12 +68,12 @@ describe("toEventRow", () => {
   });
 
   it("v4 payee_cap and monthly carry their limit as the amount", () => {
-    expect(toEventRow(event([sym("payee_cap"), b64(addr(OWNER))], i128(9n)), "testnet")).toMatchObject({
+    expect(toEventRow(event([sym("payee_cap"), b64(addr(OWNER))], i128(9n)), "mainnet")).toMatchObject({
       kind: "payee_cap",
       counterparty: OWNER,
       amount: "9",
     });
-    expect(toEventRow(event([sym("monthly")], i128(7n)), "testnet")).toMatchObject({
+    expect(toEventRow(event([sym("monthly")], i128(7n)), "mainnet")).toMatchObject({
       kind: "monthly",
       counterparty: null,
       amount: "7",
@@ -86,7 +86,7 @@ describe("toEventRow", () => {
       i128(30_000_000n),
       xdr.ScVal.scvVec([addr(TREASURY)]),
     ]);
-    expect(toEventRow(event([sym("budget"), b64(addr(OWNER))], value), "testnet")).toMatchObject({
+    expect(toEventRow(event([sym("budget"), b64(addr(OWNER))], value), "mainnet")).toMatchObject({
       kind: "budget",
       counterparty: OWNER,
       amount: "30000000",
@@ -94,7 +94,7 @@ describe("toEventRow", () => {
   });
 
   it("paused: no counterparty, no amount", () => {
-    expect(toEventRow(event([sym("paused")], xdr.ScVal.scvBool(true)), "testnet")).toMatchObject({
+    expect(toEventRow(event([sym("paused")], xdr.ScVal.scvBool(true)), "mainnet")).toMatchObject({
       kind: "paused",
       counterparty: null,
       amount: null,

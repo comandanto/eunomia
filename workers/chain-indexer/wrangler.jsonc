@@ -10,11 +10,14 @@
   "workers_dev": false,
   "preview_urls": false,
   "observability": { "enabled": true },
+  // The empty values are set at deploy, once the registry exists; until then every run fails
+  // with a message saying so.
   "vars": {
-    "NETWORK": "testnet",
-    "RPC_URL": "https://soroban-testnet.stellar.org",
-    // keep in sync with web/src/config.ts
-    "REGISTRY_ID": "CBEPVXK6BN2FZ3IYHV5KQUGROFHNBWBYHKHRZ5U3O7UWGIOPFOFE4ZE7"
+    "NETWORK": "mainnet",
+    // as the app's EUNOMIA_REGISTRY_ID
+    "REGISTRY_ID": ""
   }
-  // secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY  (wrangler secret put …)
+  // secrets (wrangler secret put …): SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and RPC_URL —
+  // the provider the app's worker holds as RELAY_RPC_URL; its URL carries the account key,
+  // so it is never a var.
 }

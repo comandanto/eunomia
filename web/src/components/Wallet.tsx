@@ -1,6 +1,6 @@
 // Level 2 — multi-wallet via StellarWalletsKit. The connect button opens a modal of
 // wallet options (Freighter / xBull / Albedo / Lobstr / Rabet / Hana); then show the
-// testnet XLM balance and send an XLM payment with success/failure + tx-hash feedback.
+// XLM balance and send an XLM payment with success/failure + tx-hash feedback.
 // Three error types are surfaced: wallet not installed, request rejected, insufficient
 // balance. (Premium visual pass is a later phase with Gemini; this is the functional layer.)
 import { useCallback, useEffect, useState } from "react";

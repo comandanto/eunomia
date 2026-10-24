@@ -4,7 +4,6 @@ import EunomiaMark from "../EunomiaMark";
 import WalletChip from "../WalletChip";
 import TreasurySwitcher from "./TreasurySwitcher";
 import { APP_PAGES, type AppPage, type View } from "../../lib/routes";
-import { IS_TESTNET } from "../../config";
 import "./shell.css";
 import "./ledger.css";
 
@@ -45,18 +44,7 @@ export default function AppShell({
           ))}
         </nav>
         <div className="shell__foot">
-          {IS_TESTNET && (
-            <button
-              className={`shell__demo${page === "dashboard" ? " is-active" : ""}`}
-              onClick={() => onGo("dashboard")}
-              type="button"
-            >
-              ▸ Guided demo
-            </button>
-          )}
-          <div className="shell__testnet">
-            {IS_TESTNET ? "⚠ Testnet — free test XLM, no real funds." : "⚠ Mainnet beta — real funds, capped deposits."}
-          </div>
+          <div className="shell__beta">⚠ Mainnet beta — real funds, capped deposits.</div>
           <a
             className="shell__docs"
             href="/docs/"

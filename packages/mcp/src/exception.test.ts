@@ -28,7 +28,7 @@ test("readExceptionEntry decodes the entry or returns null when absent", async (
     }),
   );
   const server = { getLedgerEntries: async () => ({ entries: [{ val: entry }] }) } as unknown as rpc.Server;
-  assert.deepEqual(await readExceptionEntry(NETWORKS.testnet, kp.publicKey(), "n", { server }), payload);
+  assert.deepEqual(await readExceptionEntry(NETWORKS.pubnet, kp.publicKey(), "n", { server }), payload);
   const empty = { getLedgerEntries: async () => ({ entries: [] }) } as unknown as rpc.Server;
-  assert.equal(await readExceptionEntry(NETWORKS.testnet, kp.publicKey(), "n", { server: empty }), null);
+  assert.equal(await readExceptionEntry(NETWORKS.pubnet, kp.publicKey(), "n", { server: empty }), null);
 });

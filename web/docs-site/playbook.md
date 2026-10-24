@@ -6,7 +6,9 @@ not by the agent's good manners.
 
 This is written for builders — the patterns carry over whether you use Eunomia, an
 OpenZeppelin smart account, or your own contract. Every pattern below points at the code
-and the testnet transaction that shows it working. Where Eunomia sits among the other
+that implements it; what each one proved on chain is summarised in
+[`DEPLOYMENT.md`](https://github.com/eunomia-finance/eunomia/blob/main/DEPLOYMENT.md#retired-testnet-history).
+Where Eunomia sits among the other
 projects doing this is in [`COMPARISON.md`](https://github.com/eunomia-finance/eunomia/blob/main/COMPARISON.md).
 
 ---
@@ -63,7 +65,7 @@ outrun what can be proven. → [`contracts/treasury/src/lib.rs`](https://github.
 setup (payees, agent session, funding, registry) as sub-invocations of the one call the
 owner signed turns seven approvals into one — and keeps **no authority** afterwards: no
 admin, no funds, no role on what it created.
-→ factory [`CAWLFTQ4…2OMS`](https://stellar.expert/explorer/testnet/contract/CAWLFTQ4V3ZPUWRVL5RGXBBA7FMJ26EXW37GGKCGKOXO4TKABEHF2OMS)
+→ [`contracts/treasury_factory/src/lib.rs`](https://github.com/eunomia-finance/eunomia/blob/main/contracts/treasury_factory/src/lib.rs)
 
 ### 2.2 Order of checks inside `pay()`
 
@@ -104,9 +106,7 @@ The credential that works without a backend:
 
 There is no API key, no server-side secret, nothing to leak but a capped, expiring key.
 The owner never pastes a secret anywhere; the agent never holds an owner key.
-→ live: [`set_session`](https://stellar.expert/explorer/testnet/tx/099dd99ddb88db95594c118d3cfcf55145119fd74ac29e596c7264ee20329206)
-→ [first autonomous payment](https://stellar.expert/explorer/testnet/tx/e8d564ba222324b1633df25f259d9c7ea57f1836c07e3215b20fd66e5d7dc8ba)
-· a [`revoke_session`](https://stellar.expert/explorer/testnet/tx/f2e95670cbea720f07a27e08aa9d513a959203f37f4107cfed3a1d3bb65e2286)
+→ [`packages/mcp/src/credential.ts`](https://github.com/eunomia-finance/eunomia/blob/main/packages/mcp/src/credential.ts)
 
 ### 2.5 Refusals the agent can read
 
@@ -121,7 +121,8 @@ Refuse at three stages, with the **same codes** at each:
 | `onchain` | State moved between simulation and apply; read the code back out of the failed transaction's diagnostics | one fee |
 
 → [`packages/mcp/src/errors.ts`](https://github.com/eunomia-finance/eunomia/blob/main/packages/mcp/src/errors.ts)
-· a refusal recorded on the ledger as a failed transaction: [`24da989e…`](https://stellar.expert/explorer/testnet/tx/24da989ed9afe7739df315982c63523bec7cbe6124e5a1baf5ca7396ea9f9055)
+· `eunomia-mcp pay --record-rejection` records a refusal on the ledger as a failed
+transaction, when a hash is worth the fee.
 
 ### 2.6 Exceptions without a server
 
@@ -174,27 +175,16 @@ the owner can't get money out of is worse than an agent that overspends.
 
 ## 3 · Integrate with Eunomia
 
-Everything runs on **Stellar testnet**.
+Eunomia runs on **Stellar mainnet**, in beta, with a deposit cap on every treasury.
 
 | You want to… | Do this |
 | --- | --- |
-| See it work in 5 minutes, no setup | [Try it](https://eunomia.finance/docs/try-it) · [Türkçe](https://eunomia.finance/docs/try-it-tr) |
-| Put an MCP agent (Claude, …) on a Leash | `npx -y eunomia-mcp init --treasury <C…>` → owner authorises the printed key → `claude mcp add eunomia -e EUNOMIA_TREASURY=<C…> -e EUNOMIA_NETWORK=testnet -- npx -y eunomia-mcp` — [Connect your agent](https://eunomia.finance/docs/connect-your-agent) |
+| See it work in 5 minutes | [Try it](https://eunomia.finance/docs/try-it) · [Türkçe](https://eunomia.finance/docs/try-it-tr) |
+| Put an MCP agent (Claude, …) on a Leash | `EUNOMIA_RPC_URL=<mainnet RPC> npx -y eunomia-mcp init --treasury <C…>` → owner authorises the printed key → `claude mcp add eunomia -e EUNOMIA_TREASURY=<C…> -e EUNOMIA_RPC_URL=<…> -- npx -y eunomia-mcp` — [Connect your agent](https://eunomia.finance/docs/connect-your-agent) |
 | Call it from your own TypeScript agent | `import { contextFromEnv, payFromTreasury, readTreasury, computeBudget } from "eunomia-mcp"` — [SDK](https://github.com/eunomia-finance/eunomia/blob/main/packages/mcp/README.md#sdk) |
-| Fund with TRY instead of crypto | [The anchor leg](https://eunomia.finance/docs/anchor) (SEP-6, testnet sandbox) |
 | Gate a confidential token's transfers by the same payee rule | Eunomia Policy — an OpenZeppelin Confidential Token `Policy` (`is_authorized(account, token)`) — [`contracts/policy`](https://github.com/eunomia-finance/eunomia/tree/main/contracts/policy) |
 
-**Deployed contracts** (testnet)
-
-| Contract | Address |
-| --- | --- |
-| Treasury factory | [`CAWLFTQ4V3ZPUWRVL5RGXBBA7FMJ26EXW37GGKCGKOXO4TKABEHF2OMS`](https://stellar.expert/explorer/testnet/contract/CAWLFTQ4V3ZPUWRVL5RGXBBA7FMJ26EXW37GGKCGKOXO4TKABEHF2OMS) |
-| Treasury wasm (v3.5, what the factory instantiates) | `824472060b3abec7c6c64e8985fa5d0c5a39ea277fbb67eab3125a483d059641` |
-| Treasury Registry | [`CBEPVXK6BN2FZ3IYHV5KQUGROFHNBWBYHKHRZ5U3O7UWGIOPFOFE4ZE7`](https://stellar.expert/explorer/testnet/contract/CBEPVXK6BN2FZ3IYHV5KQUGROFHNBWBYHKHRZ5U3O7UWGIOPFOFE4ZE7) |
-| Compliance Verifier (ZK, 16-payment batch) | [`CD3TB3F4VQF2H56IQC4KV3YLA6QRIF272W5D6PK2SWVTYPXHS4NFDYZ3`](https://stellar.expert/explorer/testnet/contract/CD3TB3F4VQF2H56IQC4KV3YLA6QRIF272W5D6PK2SWVTYPXHS4NFDYZ3) |
-| Eunomia Policy (Confidential Token `Policy`) | `CBWMYGL7E663UON6ER5KQX2JZZA4UDZZD4RIFEHGXXF2HMMBRAN7BLQF` |
-
-Error codes, older versions and every on-chain proof: [Contracts & Addresses](https://eunomia.finance/docs/contracts)
+Contract addresses, error codes and what each version proved: [Contracts & Addresses](https://eunomia.finance/docs/contracts)
 · [`DEPLOYMENT.md`](https://github.com/eunomia-finance/eunomia/blob/main/DEPLOYMENT.md).
 
 ---
@@ -223,8 +213,8 @@ Error codes, older versions and every on-chain proof: [Contracts & Addresses](ht
 
 ## 5 · What this playbook does not cover
 
-- **Mainnet.** Everything here is testnet. The ZK trusted setup is a single-party
-  development setup; a multi-party ceremony is a mainnet prerequisite.
+- **ZK on mainnet.** The ZK trusted setup is a single-party development setup; a
+  multi-party ceremony comes before the verifier is deployed on mainnet.
 - **Proof before payment.** The ZK layer attests *after* a period closes; `pay()` does not
   wait for a proof.
 - **Transfer-level privacy.** Payments to revealed payees stay visible at the token layer;

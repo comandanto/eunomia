@@ -10,12 +10,12 @@ describe("payeeLacksTrustline", () => {
     expect(await payeeLacksTrustline(PAYEE, "USDC", async () => ({ balances: [{ asset_type: "native" }] }))).toBe(true);
   });
 
-  it("passes an account that trusts the anchor's issuer", async () => {
+  it("passes an account that trusts the issuer", async () => {
     expect(await payeeLacksTrustline(PAYEE, "USDC", async () => ({ balances: [{ asset_type: "native" }, usdcLine] }))).toBe(false);
   });
 
   it("does not accept USDC from another issuer as the same asset", async () => {
-    const other = { asset_type: "credit_alphanum4", asset_code: "USDC", asset_issuer: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN" };
+    const other = { asset_type: "credit_alphanum4", asset_code: "USDC", asset_issuer: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5" };
     expect(await payeeLacksTrustline(PAYEE, "USDC", async () => ({ balances: [other] }))).toBe(true);
   });
 

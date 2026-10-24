@@ -4,7 +4,7 @@
 // logged, (3) the original Soroban RPC cursor-poll for richer on-chain event labels.
 import { useEffect, useMemo, useState } from "react";
 import { rpc } from "@stellar/stellar-sdk";
-import { DEMO_CONTRACTS, EXPLORER, RPC_URL, shortAddr } from "../config";
+import { EXPLORER, RPC_URL, shortAddr } from "../config";
 import { dedupeById, fetchAllEvents, fetchEventsPage, type FeedEvent } from "../lib/events";
 import { fetchActivityHistory, mergeFeedEvents, subscribeActivity } from "../lib/activity";
 import { filterFeed, type FeedFilter } from "../lib/feedFilter";
@@ -12,7 +12,7 @@ import { getTreasuryId } from "../lib/treasuryStore";
 import { useWalletAddress } from "../lib/useWalletAddress";
 import { whenOf } from "./shell/ledgerFormat";
 
-const POLL_MS = 6000; // ~1 testnet ledger
+const POLL_MS = 6000; // ~1 ledger
 const MAX_ITEMS = 120;
 const PAGE = 30; // rows revealed per "Load more"
 
@@ -35,15 +35,12 @@ export default function ActivityFeed({ filter }: { filter?: FeedFilter }) {
   const [state, setState] = useState<"connecting" | "live" | "error">("connecting");
   const [visible, setVisible] = useState(PAGE);
 
-  // Watch the connected user's own treasury alongside the demo treasury + verifier (testnet
-  // only) — otherwise a user's payments never show up here and the feed looks broken.
+  // Follow the connected user's own treasury on chain — otherwise a user's payments only
+  // show up once the activity log carries them, and the feed looks broken.
   const address = useWalletAddress();
   const myTreasury = address ? getTreasuryId(address) : null;
 
-  const contractIds = useMemo(
-    () => (myTreasury ? [...DEMO_CONTRACTS, myTreasury] : DEMO_CONTRACTS),
-    [myTreasury],
-  );
+  const contractIds = useMemo(() => (myTreasury ? [myTreasury] : []), [myTreasury]);
 
   useEffect(() => {
     const server = new rpc.Server(RPC_URL);
@@ -72,7 +69,7 @@ export default function ActivityFeed({ filter }: { filter?: FeedFilter }) {
       const history = await fetchActivityHistory(MAX_ITEMS);
       if (stopped) return;
       if (history.length) setEvents((prev) => mergeFeedEvents(prev, history, MAX_ITEMS));
-      // Nothing on chain to follow yet (mainnet, no treasury connected): the history is it.
+      // Nothing on chain to follow yet (no treasury connected): the history is it.
       if (contractIds.length === 0) {
         setState("live");
         return;

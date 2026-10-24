@@ -6,7 +6,6 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { Keypair, StrKey } from "@stellar/stellar-sdk";
 import type { NetworkName } from "./format.js";
-import type { NetworkConfig } from "./network.js";
 
 export interface Credential {
   version: 1;
@@ -74,24 +73,4 @@ export function resolveCredential(
     return { version: 1, network, treasuryId, agentPublicKey: kp.publicKey(), agentSecret: secret, createdAt: "env" };
   }
   return loadCredential(home, network, treasuryId);
-}
-
-/** The session key is the transaction source for autonomous payments, so it must exist
- *  and hold XLM for fees. On testnet friendbot does that; elsewhere the operator funds it. */
-export async function fundOnTestnet(
-  net: NetworkConfig,
-  publicKey: string,
-  fetchImpl: typeof fetch = fetch,
-): Promise<void> {
-  if (!net.friendbot) {
-    throw new Error(
-      `No friendbot on ${net.name} — fund ${publicKey} with a few XLM yourself (this is testnet-only automation).`,
-    );
-  }
-  const res = await fetchImpl(`${net.friendbot}/?addr=${encodeURIComponent(publicKey)}`);
-  if (!res.ok) {
-    throw new Error(
-      `friendbot refused to fund ${publicKey} (HTTP ${res.status}) — retry in a minute or fund it manually.`,
-    );
-  }
 }

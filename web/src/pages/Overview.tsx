@@ -5,9 +5,9 @@
 //
 // There is no "send a payment" here on purpose: the agent pays, the rules decide, this
 // page reports. Paying by hand is the escape hatch on the Payments page.
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { EXPLORER, IS_TESTNET, USDC_TOKEN, fmtXlm, shortAddr } from "../config";
+import { EXPLORER, USDC_TOKEN, fmtXlm, shortAddr } from "../config";
 import { useTreasury } from "../state/useTreasury";
 import { useAnalyticsScore } from "../lib/useAnalytics";
 import { useTreasuryActivity } from "../lib/useTreasuryActivity";
@@ -25,10 +25,6 @@ import ExceptionRequests from "../components/ExceptionRequests";
 import BottomSheet from "../components/shell/BottomSheet";
 import { decisionsByDay } from "../lib/insights";
 import { useIsMobile } from "../lib/useIsMobile";
-
-// The TRY anchor is a testnet sandbox: a mainnet build does not ship its code at all.
-const AddFundsTry =
-  __EUNOMIA_NETWORK__ === "testnet" ? lazy(() => import("../components/AddFundsTry")) : null;
 
 // What the user should do next, in their words — one line, not a five-step strip.
 const NEXT_LINE: Partial<Record<SetupStep, string>> = {
@@ -202,16 +198,8 @@ export default function Overview({ onGo }: { onGo: (v: View) => void }) {
     setFundOpen(false);
     setFundErr("");
   };
-  // On testnet a USDC treasury is funded with TRY through the anchor sandbox. Everywhere else
-  // the deposit comes from the wallet, in the treasury's own token.
-  const fundForm = (inSheet: boolean) =>
-    t.tokenCode === "USDC" && AddFundsTry ? (
-      <Suspense fallback={null}>
-        <AddFundsTry onDone={closeFund} />
-      </Suspense>
-    ) : (
-      walletFundForm(inSheet)
-    );
+  // The deposit comes from the wallet, in the treasury's own token.
+  const fundForm = walletFundForm;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -238,11 +226,6 @@ export default function Overview({ onGo }: { onGo: (v: View) => void }) {
             {t.walletXlm === null ? "Your wallet holds no XLM yet." : `Your wallet holds ${t.walletXlm.toFixed(2)} XLM.`}{" "}
             The treasury is empty and you need about {MIN_XLM} XLM in the wallet to fund it.
           </span>
-          {IS_TESTNET && (
-            <button className="btn btn--ghost" onClick={() => void t.friendbot()} disabled={!!t.busy} type="button">
-              {t.busy === "friendbot" ? "Sending…" : "Get test XLM"}
-            </button>
-          )}
         </div>
       )}
 
@@ -333,7 +316,7 @@ export default function Overview({ onGo }: { onGo: (v: View) => void }) {
             {leashOn && session ? (
               <>
                 <div className="num" style={{ fontSize: 14 }}>
-                  {shortAddr(session.agent)} <span style={{ color: "var(--ink-2)" }}>· {t.sessionSecret ? "this device" : "external agent"}</span>
+                  {shortAddr(session.agent)} <span style={{ color: "var(--ink-2)" }}>· your agent</span>
                 </div>
                 <div className="bar bar--thin"><div className="bar__fill bar__fill--ink" style={{ width: `${leashPct}%` }} /></div>
                 <div className="meter__line">

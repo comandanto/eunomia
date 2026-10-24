@@ -12,7 +12,6 @@ import {
   setActiveTreasury,
   setTreasuryId,
 } from "../lib/treasuryStore";
-import { waitForBalanceChange } from "../lib/balanceWait";
 import { createTreasury, type TreasurySetup } from "../lib/createTreasury";
 import {
   addPayee,
@@ -24,6 +23,7 @@ import {
   pay,
   readLifecycle,
   readState,
+  runsTreasuryCode,
   removePayee,
   revokeSession,
   setLimits,
@@ -34,44 +34,15 @@ import {
   type Lifecycle,
   type EunomiaState,
 } from "../lib/userTreasury";
-import {
-  IS_TESTNET,
-  NETWORK_LABEL,
-  NETWORK_PASSPHRASE,
-  RPC_URL,
-  SAMPLE_STRANGER,
-  SAMPLE_VENDOR,
-  shortAddr,
-} from "../config";
-import {
-  demoAmount,
-  initialLoop,
-  unitsOf,
-  withStep,
-  type LoopStep,
-  type LoopStepKey,
-} from "../lib/agentLoop";
-import { loadPayeeBook } from "../lib/payees";
-import { Client } from "../lib/treasuryClient";
-import { fundWithFriendbot, getContractXlmBalance, getXlmBalance } from "../lib/funding";
+import { NETWORK_LABEL, shortAddr } from "../config";
+import { getContractXlmBalance, getXlmBalance } from "../lib/funding";
 import { connectErr, errText, sendErr } from "../lib/wallet-errors";
 import { checkLimits, isValidPaymentDest, parseOptionalXlmAmount, parseXlmAmount } from "../lib/validate";
 import { trackError, trackViolation } from "../lib/analytics";
 import { logActivity } from "../lib/activity";
 import { tokenCodeOf, tokenIdOf } from "../lib/token";
-import {
-  clearSessionSecret,
-  createSession,
-  isValidAgentKey,
-  registerAgentKey,
-  loadSessionSecret,
-  sessionIsActive,
-  sessionPay,
-  sessionRequestException,
-} from "../lib/session";
-import { Keypair } from "@stellar/stellar-sdk";
+import { isValidAgentKey, registerAgentKey, sessionIsActive } from "../lib/session";
 import { discoverTreasuries, registerTreasury } from "../lib/registry";
-import { testSignerAvailable } from "../lib/testSigner";
 import { mergeTreasuries } from "../lib/treasuryList";
 import { useToast } from "./toastContext";
 import type { BudgetRequest } from "../lib/budgetRequestCodec";
@@ -96,7 +67,6 @@ export function TreasuryProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<EunomiaState | null>(null);
   const [lifecycle, setLifecycle] = useState<Lifecycle | null>(null);
   const [legacy, setLegacy] = useState(false);
-  const [sessionSecret, setSessionSecret] = useState<string | null>(null);
   const [walletXlm, setWalletXlm] = useState<number | null | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<Busy>(null);
@@ -112,7 +82,6 @@ export function TreasuryProvider({ children }: { children: React.ReactNode }) {
     setState(null);
     setLifecycle(null);
     setLegacy(false);
-    setSessionSecret(null);
     setWalletXlm(undefined);
     setRegistryIds([]);
     setLocalIds(address ? listTreasuries(address) : []);
@@ -125,8 +94,8 @@ export function TreasuryProvider({ children }: { children: React.ReactNode }) {
     setLoading(!!loadKey);
   }
 
-  // The single-spender rule: while a session is active, payments must be signed
-  // by the session key — the wallet's signature would be rejected on-chain.
+  // The single-spender rule: while a session is active, payments must be signed by the
+  // agent's key — the wallet's signature would be rejected on-chain.
   const sessionActive = !legacy && sessionIsActive(lifecycle?.session ?? null);
 
   const treasuries = useMemo(() => mergeTreasuries(localIds, registryIds), [localIds, registryIds]);
@@ -143,18 +112,24 @@ export function TreasuryProvider({ children }: { children: React.ReactNode }) {
     if (opts?.markLoading !== false) setLoading(true);
     try {
       const t = makeTreasury(id, await executorFor(addr));
-      const st = await readState(t);
+      const [st, ours] = await Promise.all([readState(t), runsTreasuryCode(id)]);
       if (stale()) return;
-      // The chain, not the registry, decides whose treasury this is. TreasuryRegistry
-      // stores an unverified claim and this app adopts the newest one on a fresh
-      // device, so without this check one signature on a zero-value "back up your
-      // treasury" call could hand a victim a treasury the attacker administers — and
-      // the victim would fund it. Fails closed: unknown ownership is refused.
-      if (!isOwnedBy(st, addr)) {
+      // The chain, not the registry, decides whose treasury this is — and the code it runs
+      // decides whether its answer can be believed. This app adopts the newest registered
+      // treasury on a fresh device, so without these checks one signature on a zero-value
+      // "back up your treasury" call could hand a victim a treasury the attacker
+      // administers, or a contract that only claims the victim does — and the victim would
+      // fund it. Fails closed: unknown code or ownership is refused.
+      const refusal = !ours
+        ? "That contract isn't a Eunomia treasury, so it wasn't opened."
+        : !isOwnedBy(st, addr)
+          ? "That treasury is administered by a different wallet, so it wasn't opened."
+          : null;
+      if (refusal) {
         setState(null);
         setLifecycle(null);
-        console.error("[treasury] refusing", id, "— admin is", st.admin, "not", addr);
-        toast("error", "That treasury is administered by a different wallet, so it wasn't opened.");
+        console.error("[treasury] refusing", id, ours ? `— admin is ${st.admin}, not ${addr}` : "— not the shipped treasury code");
+        toast("error", refusal);
         // Refused is final, so it must not stay the active treasury: left in place it kept
         // every page on skeletons and blocked the owner's own treasury from being adopted.
         if (getTreasuryId(addr) === id) {
@@ -170,7 +145,6 @@ export function TreasuryProvider({ children }: { children: React.ReactNode }) {
       if (stale()) return;
       setLifecycle(lc);
       setLegacy(lc === null);
-      setSessionSecret(loadSessionSecret(id));
     } catch (e) {
       if (stale()) return;
       setState(null);
@@ -268,32 +242,6 @@ export function TreasuryProvider({ children }: { children: React.ReactNode }) {
     }
   }, [syncLocalIds, toast]);
 
-  const friendbot = useCallback(async (): Promise<ActionOutcome> => {
-    if (!address) return fail("Connect a wallet first.");
-    setBusy("friendbot");
-    toast("info", "Requesting free testnet XLM…");
-    try {
-      const before = walletXlm ?? null;
-      await fundWithFriendbot(address);
-      // The dispenser answers when the transaction is accepted, not applied: read until
-      // the balance actually moves, or the page keeps saying 0.00 XLM to a funded wallet.
-      const after = await waitForBalanceChange(
-        () => (isValidContractId(address) ? getContractXlmBalance(address) : getXlmBalance(address)),
-        before,
-      );
-      setWalletXlm(after);
-      const msg = "Wallet funded with testnet XLM ✓";
-      toast("success", msg);
-      return { ok: true, msg };
-    } catch (e) {
-      const msg = errText(e);
-      toast("error", msg);
-      return fail(msg);
-    } finally {
-      setBusy(null);
-    }
-  }, [address, walletXlm, toast]);
-
   const deploy = useCallback(
     async (daily: string, perTask: string, extra: DeployExtras = {}): Promise<ActionOutcome> => {
       if (!address) return fail("Connect a wallet first.");
@@ -323,7 +271,7 @@ export function TreasuryProvider({ children }: { children: React.ReactNode }) {
         leash = { agent: agentKey, capXlm: cap.value, hours };
       }
       // Starting funds are not checked against the displayed balance on purpose: a smart
-      // wallet's reading can lag the faucet by a ledger or two, and the chain refuses an
+      // wallet's reading can lag a transfer by a ledger or two, and the chain refuses an
       // underfunded transfer anyway — atomically, so nothing half-created survives.
       // A USDC treasury opens empty: the wallet holds no USDC to move in, and the form does
       // not offer the field — whatever it still carries from an earlier choice is ignored.
@@ -334,9 +282,6 @@ export function TreasuryProvider({ children }: { children: React.ReactNode }) {
       toast("info", "Creating your treasury — one confirmation in your wallet…");
       try {
         // One signature: deploy + policy + payee + Leash + funding + registry, atomically.
-        // E2E runs must never touch the registry — it feeds the user-count evidence, and
-        // throwaway Playwright wallets were inflating it (docs/metrics/e2e-exclude.json).
-        const register = !testSignerAvailable();
         const id = await createTreasury(await executorFor(address), {
           token: tokenIdOf(code),
           dailyXlm: dailyLimit.value,
@@ -344,16 +289,16 @@ export function TreasuryProvider({ children }: { children: React.ReactNode }) {
           payees: payee ? [payee] : [],
           leash,
           fundXlm: fund.value,
-          register,
+          register: true,
           salt: extra.salt,
         });
         setTreasuryId(address, id);
         setTreasuryIdState(id);
         setCreatingNew(false);
         syncLocalIds(address);
-        if (register) setRegistryIds((ids) => (ids.includes(id) ? ids : [...ids, id]));
+        setRegistryIds((ids) => (ids.includes(id) ? ids : [...ids, id]));
         void logActivity({ walletAddress: address, treasuryId: id, action: "deploy" });
-        if (register) void logActivity({ walletAddress: address, treasuryId: id, action: "register" });
+        void logActivity({ walletAddress: address, treasuryId: id, action: "register" });
         if (fund.value > 0) void logActivity({ walletAddress: address, treasuryId: id, action: "fund", amountXlm: fund.value });
         if (payee) void logActivity({ walletAddress: address, treasuryId: id, action: "whitelist" });
         if (leash) void logActivity({ walletAddress: address, treasuryId: id, action: "session_start" });
@@ -362,7 +307,7 @@ export function TreasuryProvider({ children }: { children: React.ReactNode }) {
           fund.value > 0 ? `funded with ${fund.value} XLM` : null,
           payee ? "first payee approved" : null,
           leash ? "Leash started" : null,
-          register ? "backed up on Stellar" : null,
+          "backed up on Stellar",
         ].filter(Boolean);
         const msg = `Treasury created ✓${parts.length ? " — " + parts.join(", ") : ""}. One signature.`;
         toast("success", msg);
@@ -480,35 +425,17 @@ export function TreasuryProvider({ children }: { children: React.ReactNode }) {
       if (!address || !treasuryId) return fail("No treasury open.");
       const amt = parseXlmAmount(amount);
       if (!amt.ok) return invalid(amt.msg);
-      if (sessionActive && !sessionSecret) {
-        return invalid(
-          "A Leash is active but its key isn't on this device — revoke it (Agent page) to spend with your wallet.",
-        );
+      // Single-spender rule: while the Leash is on, only the agent's key may pay.
+      if (sessionActive) {
+        return invalid("Your agent is on the Leash — revoke it (Agent page) to pay with your wallet.");
       }
       setBusy("spend");
-      toast("info", sessionActive ? "Sending payment — the Leash signs, no popup…" : "Sending payment — confirm in your wallet…");
+      toast("info", "Sending payment — confirm in your wallet…");
       try {
-        // Single-spender rule: an active session's key signs instead of the wallet.
-        const res =
-          sessionActive && sessionSecret
-            ? await sessionPay(treasuryId, sessionSecret, BigInt(Date.now()), to.trim(), amt.value)
-            : await pay(
-                makeTreasury(treasuryId, await executorFor(address)),
-                BigInt(Date.now()),
-                to.trim(),
-                amt.value,
-              );
+        const res = await pay(makeTreasury(treasuryId, await executorFor(address)), BigInt(Date.now()), to.trim(), amt.value);
         if (res.ok) {
-          void logActivity({
-            walletAddress: address,
-            treasuryId,
-            action: sessionActive ? "agent_pay" : "pay",
-            txHash: res.hash,
-            amountXlm: amt.value,
-          });
-          const msg = sessionActive
-            ? "Payment sent ✓ — signed by the Leash, no wallet popup."
-            : "Payment sent ✓";
+          void logActivity({ walletAddress: address, treasuryId, action: "pay", txHash: res.hash, amountXlm: amt.value });
+          const msg = "Payment sent ✓";
           toast("success", msg, { hash: res.hash });
           bump();
           await loadState(treasuryId, address);
@@ -529,7 +456,7 @@ export function TreasuryProvider({ children }: { children: React.ReactNode }) {
         setBusy(null);
       }
     },
-    [address, treasuryId, sessionActive, sessionSecret, bump, loadState, toast],
+    [address, treasuryId, sessionActive, bump, loadState, toast],
   );
 
   const startLeash = useCallback(
@@ -539,65 +466,26 @@ export function TreasuryProvider({ children }: { children: React.ReactNode }) {
       if (!capV.ok) return invalid(capV.msg);
       const hoursV = parseXlmAmount(hours, "duration");
       if (!hoursV.ok) return invalid(hoursV.msg);
-      // An external agent (eunomia-mcp) brings its own key: only the public half is
-      // registered, nothing is generated or funded here.
+      // The agent (eunomia-mcp) brings its own key: only the public half is registered,
+      // nothing is generated or funded here.
       const externalKey = agentPublicKey?.trim() ?? "";
-      if (externalKey && !isValidAgentKey(externalKey)) {
-        return invalid("That is not a Stellar public key (G…, 56 characters) — copy it from `eunomia-mcp init`.");
-      }
-      // The built-in agent keeps its secret in this browser and is funded by friendbot: a
-      // testnet convenience. On mainnet the agent always brings its own key.
-      if (!externalKey && !IS_TESTNET) {
+      if (!externalKey) {
         return invalid("Paste your agent's public key — run `eunomia-mcp init` on the agent's machine to get one.");
       }
+      if (!isValidAgentKey(externalKey)) {
+        return invalid("That is not a Stellar public key (G…, 56 characters) — copy it from `eunomia-mcp init`.");
+      }
       setBusy("session");
-      toast(
-        "info",
-        externalKey
-          ? "Authorising your agent's key — confirm in your wallet…"
-          : "Starting the Leash session — confirm in your wallet…",
-      );
+      toast("info", "Authorising your agent's key — confirm in your wallet…");
       try {
         const t = makeTreasury(treasuryId, await executorFor(address));
-        if (externalKey) {
-          const res = await registerAgentKey(t, treasuryId, externalKey, capV.value, hoursV.value);
-          if (res.ok) {
-            setSessionSecret(null);
-            void logActivity({ walletAddress: address, treasuryId, action: "session_start", txHash: res.hash });
-            const msg = "Leash on ✓ — your agent can now pay within the cap, from its own machine.";
-            toast("success", msg, { hash: res.hash });
-            await loadState(treasuryId, address);
-            return { ok: true, msg, hash: res.hash };
-          }
-          const msg = `Blocked: ${res.errorMessage}`;
-          toast("error", msg);
-          return fail(msg);
-        }
-        const res = await createSession(t, treasuryId, capV.value, hoursV.value, (phase) =>
-          toast(
-            "info",
-            phase === "registering"
-              ? "Registering the Leash key — confirm in your wallet…"
-              : "Funding the agent's key on testnet…",
-          ),
-        );
+        const res = await registerAgentKey(t, externalKey, capV.value, hoursV.value);
         if (res.ok) {
-          setSessionSecret(loadSessionSecret(treasuryId));
           void logActivity({ walletAddress: address, treasuryId, action: "session_start", txHash: res.hash });
-          const msg = "Leash on ✓ — the agent now pays without wallet popups.";
+          const msg = "Leash on ✓ — your agent can now pay within the cap, from its own machine.";
           toast("success", msg, { hash: res.hash });
           await loadState(treasuryId, address);
           return { ok: true, msg, hash: res.hash };
-        }
-        if (res.registered) {
-          // Session is live on-chain but its key couldn't be funded. Load the saved secret
-          // and refresh state so the UI matches the chain (active session + revoke control).
-          setSessionSecret(loadSessionSecret(treasuryId));
-          void logActivity({ walletAddress: address, treasuryId, action: "session_start" });
-          const msg = res.errorMessage ?? "The Leash was registered but its key couldn't be funded — revoke it and start a new one.";
-          toast("error", msg);
-          await loadState(treasuryId, address);
-          return fail(msg);
         }
         const msg = `Blocked: ${res.errorMessage}`;
         toast("error", msg);
@@ -626,7 +514,6 @@ export function TreasuryProvider({ children }: { children: React.ReactNode }) {
         const validUntil = BigInt(Math.floor(Date.now() / 1000) + r.hours * 3600);
         const res = await setTaskBudget(t, r.agent, validUntil, r.limit, r.payees);
         if (res.ok) {
-          setSessionSecret(null);
           void logActivity({ walletAddress: address, treasuryId, action: "session_start", txHash: res.hash });
           const msg = "Budget approved ✓ — the agent can pay inside it, only to the payees it named.";
           toast("success", msg, { hash: res.hash });
@@ -655,8 +542,6 @@ export function TreasuryProvider({ children }: { children: React.ReactNode }) {
       const t = makeTreasury(treasuryId, await executorFor(address));
       const res = await revokeSession(t);
       if (res.ok) {
-        clearSessionSecret(treasuryId);
-        setSessionSecret(null);
         void logActivity({ walletAddress: address, treasuryId, action: "session_revoke", txHash: res.hash });
         const msg = "Leash revoked ✓ — your wallet is the spender again.";
         toast("success", msg, { hash: res.hash });
@@ -674,171 +559,6 @@ export function TreasuryProvider({ children }: { children: React.ReactNode }) {
       setBusy(null);
     }
   }, [address, treasuryId, loadState, toast]);
-
-  const runAutonomousTask = useCallback(
-    async (to?: string): Promise<ActionOutcome> => {
-      if (!address || !treasuryId || !sessionSecret) return fail("No active Leash key on this device.");
-      const dest = (to ?? "").trim() || SAMPLE_VENDOR;
-      if (!dest) return fail("Choose who the agent pays.");
-      const unit = tokenCodeOf(state?.token);
-      setBusy("task");
-      toast("info", "Agent is paying autonomously — no wallet popup…");
-      try {
-        const res = await sessionPay(treasuryId, sessionSecret, BigInt(Date.now()), dest, 1);
-        if (res.ok) {
-          void logActivity({ walletAddress: address, treasuryId, action: "agent_pay", txHash: res.hash, amountXlm: 1 });
-          const msg = `Agent paid 1 ${unit} to ${shortAddr(dest)} autonomously ✓ — the contract enforced the policy.`;
-          toast("success", msg, { hash: res.hash });
-          bump();
-          await loadState(treasuryId, address);
-          return { ok: true, msg, hash: res.hash };
-        }
-        trackViolation(treasuryId);
-        void logActivity({ walletAddress: address, treasuryId, action: "reject", amountXlm: 1 });
-        const msg = `Blocked by policy: ${res.errorMessage}`;
-        toast("error", msg);
-        await loadState(treasuryId, address);
-        return fail(msg);
-      } catch (e) {
-        trackError(treasuryId, errText(e));
-        const msg = sendErr(e);
-        toast("error", msg);
-        return fail(msg);
-      } finally {
-        setBusy(null);
-      }
-    },
-    [address, treasuryId, sessionSecret, state?.token, bump, loadState, toast],
-  );
-
-  // The agent's own loop, the three steps in the order they matter: a payment the rules
-  // allow, a payment they refuse, and the agent asking the owner to allow that one. Every
-  // step is real — the refusal is the contract's, not a staged message, and the request
-  // lands on the agent's own Stellar account, where the panel below reads it. The owner
-  // signs nothing: that is the claim this button exists to perform.
-  const runAgentLoop = useCallback(
-    async (onStep: (steps: LoopStep[]) => void): Promise<ActionOutcome> => {
-      if (!address || !treasuryId || !sessionSecret) return fail("No Leash key on this device — start one first.");
-      if (!state) return fail("The treasury's rules haven't loaded yet — give it a moment.");
-      const s = lifecycle?.session;
-      const sessionLeft =
-        s && sessionActive ? (s.limit > s.spent ? s.limit - s.spent : 0n) : null;
-      const room = demoAmount({
-        perTaskLimit: state.perTaskLimit,
-        dailyLimit: state.dailyLimit,
-        daySpent: state.daySpent,
-        balance: state.balance,
-        sessionLeft,
-      });
-      if (!room.ok) return fail(room.why);
-      const amount = unitsOf(room.stroops);
-
-      let steps = initialLoop();
-      const push = (key: LoopStepKey, patch: Partial<LoopStep>) => {
-        steps = withStep(steps, key, patch);
-        onStep(steps);
-      };
-      onStep(steps);
-
-      setBusy("loop");
-      try {
-        // 1. Someone the owner approved. Which one is the contract's answer, not this
-        //    device's: the local payee book can hold an address that was never whitelisted
-        //    or was removed since, and opening with a refused payment proves nothing.
-        push("pay", { status: "running" });
-        const candidates = loadPayeeBook(treasuryId);
-        if (SAMPLE_VENDOR) candidates.push(SAMPLE_VENDOR);
-        const payee = await firstApprovedPayee(treasuryId, candidates);
-        if (!payee) {
-          const msg = "Approve a payee first — the loop opens with a payment your rules allow.";
-          push("pay", { status: "failed", detail: msg });
-          toast("error", msg);
-          return fail(msg);
-        }
-        const paid = await sessionPay(treasuryId, sessionSecret, BigInt(Date.now()), payee, amount);
-        if (!paid.ok) {
-          const msg = paid.errorMessage ?? "The agent's payment did not go through.";
-          push("pay", { status: "failed", detail: msg });
-          toast("error", msg);
-          return fail(msg);
-        }
-        void logActivity({ walletAddress: address, treasuryId, action: "agent_pay", txHash: paid.hash, amountXlm: amount });
-        push("pay", {
-          status: "done",
-          detail: `Paid ${amount} ${tokenCodeOf(state.token)} to ${shortAddr(payee)}. You signed nothing.`,
-          hash: paid.hash,
-        });
-
-        // 2. Someone the owner never approved. On testnet, prefer the demo's known address so
-        //    the ledger reads the same every time; if it has since been whitelisted, or on
-        //    mainnet, a fresh key is the one address that certainly isn't on the list.
-        push("refused", { status: "running" });
-        //    An unreadable answer counts as approved here: isApprovedPayee's "not approved"
-        //    default is the safe side for choosing whom to pay, the wrong side for this.
-        const known = SAMPLE_STRANGER;
-        const knownMayBeApproved =
-          !known ||
-          (await readClient(treasuryId)
-            .is_payee({ payee: known })
-            .then((r) => r.result, () => true));
-        const stranger = knownMayBeApproved || !known ? Keypair.random().publicKey() : known;
-        const taskId = BigInt(Date.now());
-        const tried = await sessionPay(treasuryId, sessionSecret, taskId, stranger, amount);
-        if (tried.ok) {
-          // The contract let it through — the rules are not what this page just claimed.
-          const msg = "That payment went through. Check your approved payees: the loop expected a refusal.";
-          push("refused", { status: "failed", detail: msg, hash: tried.hash });
-          toast("error", msg);
-          await loadState(treasuryId, address);
-          return fail(msg);
-        }
-        trackViolation(treasuryId);
-        void logActivity({ walletAddress: address, treasuryId, action: "reject", amountXlm: amount });
-        const code = tried.errorCode ?? 2;
-        push("refused", {
-          status: "refused",
-          detail: `${tried.errorMessage ?? "Refused by your rules."} ${shortAddr(stranger)} never got the money.`,
-        });
-
-        // 3. The agent's appeal. It writes the refusal onto its own account, where only
-        //    its key can write; the owner resolves it on-chain in "Waiting for you".
-        push("request", { status: "running" });
-        const filed = await sessionRequestException(treasuryId, sessionSecret, {
-          payee: stranger,
-          amount: room.stroops,
-          taskId,
-          reasonCodes: [code],
-          requestedAt: Math.floor(Date.now() / 1000),
-        });
-        if (!filed.ok) {
-          const msg = filed.errorMessage ?? "The agent could not file its request.";
-          push("request", { status: "failed", detail: msg });
-          toast("error", msg);
-          await loadState(treasuryId, address);
-          return fail(msg);
-        }
-        push("request", {
-          status: "done",
-          detail: "Filed on the agent's own account — it's waiting for you below.",
-          hash: filed.hash,
-        });
-
-        const msg = "The agent ran on its own ✓ — it paid, got refused, and asked you to allow the one it couldn't.";
-        toast("success", msg, { hash: paid.hash });
-        bump();
-        await loadState(treasuryId, address);
-        return { ok: true, msg, hash: paid.hash };
-      } catch (e) {
-        trackError(treasuryId, errText(e));
-        const msg = sendErr(e);
-        toast("error", msg);
-        return fail(msg);
-      } finally {
-        setBusy(null);
-      }
-    },
-    [address, treasuryId, sessionSecret, state, lifecycle, sessionActive, bump, loadState, toast],
-  );
 
   const togglePause = useCallback(async (): Promise<ActionOutcome> => {
     if (!address || !treasuryId || !lifecycle) return fail("No treasury open.");
@@ -1027,7 +747,6 @@ export function TreasuryProvider({ children }: { children: React.ReactNode }) {
       setState(null);
       setLifecycle(null);
       setLegacy(false);
-      setSessionSecret(null);
       syncLocalIds(address);
       bump();
     },
@@ -1047,7 +766,6 @@ export function TreasuryProvider({ children }: { children: React.ReactNode }) {
         setTreasuryIdState(next);
         setState(null);
         setLifecycle(null);
-        setSessionSecret(null);
       } else {
         setActiveTreasury(address, id);
         clearTreasuryId(address);
@@ -1066,7 +784,6 @@ export function TreasuryProvider({ children }: { children: React.ReactNode }) {
     lifecycle,
     legacy,
     sessionActive,
-    sessionSecret,
     walletXlm,
     loading,
     busy,
@@ -1074,7 +791,6 @@ export function TreasuryProvider({ children }: { children: React.ReactNode }) {
     treasuries,
     refresh,
     connect,
-    friendbot,
     deploy,
     openExisting,
     fund,
@@ -1084,8 +800,6 @@ export function TreasuryProvider({ children }: { children: React.ReactNode }) {
     startLeash,
     revokeLeash,
     approveBudget,
-    runAutonomousTask,
-    runAgentLoop,
     togglePause,
     withdraw,
     updateLimits,
@@ -1100,27 +814,4 @@ export function TreasuryProvider({ children }: { children: React.ReactNode }) {
   };
 
   return <TreasuryContext.Provider value={value}>{children}</TreasuryContext.Provider>;
-}
-
-// ---- whom the agent loop pays -----------------------------------------------------
-// Read-only client: whether an address is approved is the contract's answer, and asking
-// it costs one simulation, not a signature.
-
-const readClient = (treasuryId: string) =>
-  new Client({ contractId: treasuryId, networkPassphrase: NETWORK_PASSPHRASE, rpcUrl: RPC_URL });
-
-async function isApprovedPayee(treasuryId: string, addr: string): Promise<boolean> {
-  try {
-    return (await readClient(treasuryId).is_payee({ payee: addr })).result;
-  } catch {
-    return false; // unreadable — treat as not approved rather than pay into the dark
-  }
-}
-
-/** The first candidate the contract calls approved, or null when none is. */
-async function firstApprovedPayee(treasuryId: string, candidates: string[]): Promise<string | null> {
-  for (const addr of new Set(candidates)) {
-    if (await isApprovedPayee(treasuryId, addr)) return addr;
-  }
-  return null;
 }

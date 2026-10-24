@@ -33,7 +33,7 @@ describe("allowedWasmHashes", () => {
   });
 });
 
-// A real testnet contract id, so the shape check is exercised against the genuine article.
+// A well-formed contract id, so the shape check is exercised against the genuine article.
 const TREASURY = "CBEPVXK6RGYUMHZCJ4H2TQZKGCVWZC5X6LPUZQ6ZOEXTPZ63DZMD4ZE7";
 const ALLOW = [TREASURY];
 
@@ -150,7 +150,7 @@ describe("authEntriesAreSafe", () => {
 
   it("refuses a source-account entry, which would authorise as the relay itself", () => {
     // The relay is the transaction source, so this entry is satisfied by the relay's own
-    // signature: a transfer out of the dispenser that anyone could post.
+    // signature: a transfer out of the fee account that anyone could post.
     const asRelay = new xdr.SorobanAuthorizationEntry({
       credentials: xdr.SorobanCredentials.sorobanCredentialsSourceAccount(),
       rootInvocation: invocation,

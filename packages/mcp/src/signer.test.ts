@@ -8,7 +8,7 @@ test("agentKeypair derives the credential's public key", () => {
   const kp = Keypair.random();
   const cred = {
     version: 1 as const,
-    network: "testnet" as const,
+    network: "pubnet" as const,
     treasuryId: "C",
     agentPublicKey: kp.publicKey(),
     agentSecret: kp.secret(),

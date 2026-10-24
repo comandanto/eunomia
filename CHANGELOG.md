@@ -7,6 +7,25 @@ deployed addresses and on-chain proofs in [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
 ## [Unreleased]
 
+- **Changed (mainnet only)** — the app, the relay, the chain indexer and `eunomia-mcp` run on
+  Stellar mainnet and nothing else. Removed: the guided testnet demo and its embedded agent
+  key, the in-browser Leash key (the agent always brings its own key), friendbot and the
+  faucet, the TRY anchor sandbox, and the testnet Playwright specs. `npm run build` is the
+  mainnet build and needs `EUNOMIA_RPC_URL`, `EUNOMIA_FACTORY_ID` and `EUNOMIA_REGISTRY_ID`.
+  The testnet record is summarised in `DEPLOYMENT.md` → Retired testnet history.
+- **Changed (factory v4.1)** — one deposit cap per token, and only the listed tokens: the
+  constructor takes `caps: Vec<TokenCap>`, `deposit_cap(token)` answers `Option<i128>`, and
+  `tokens()` lists them. The beta factory accepts 500 XLM and 100 USDC.
+- **Fixed (registry, review H2)** — `register` refuses a treasury whose admin is not the
+  owner; `unregister` drops an entry. The app also refuses a treasury that does not run the
+  shipped wasm.
+- **Added** — `/api/rpc`: the page reaches the RPC provider through the worker, which holds
+  the provider's keyed URL as a secret and forwards only the methods the app uses.
+- **Breaking (eunomia-mcp, next release)** — mainnet only: `EUNOMIA_RPC_URL` is required,
+  `EUNOMIA_NETWORK` may only be `pubnet` (a config that says `testnet` now stops the server),
+  `init` no longer funds the key (`--skip-fund` is gone) and prints how much XLM to send it,
+  `call_service` calls https only, and a budget request link must name `pubnet`.
+
 - **Added (eunomia-mcp 0.3.0, SOW 2 deliverables 2-3)** — agents buy real services.
   `find_services` searches the ROZO MPP Router catalog (hundreds of paid APIs on Stellar
   mainnet USDC); `fund_float` tops up the agent's own account through the treasury's

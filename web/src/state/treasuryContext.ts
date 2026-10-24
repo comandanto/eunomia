@@ -1,7 +1,6 @@
 // Context + types live apart from the provider component (react-refresh rule: a file
 // exporting a component must export nothing else).
 import { createContext } from "react";
-import type { LoopStep } from "../lib/agentLoop";
 import type { Lifecycle, EunomiaState } from "../lib/userTreasury";
 import type { TreasuryRef } from "../lib/treasuryList";
 import type { TokenCode } from "../lib/token";
@@ -12,7 +11,6 @@ import type { BudgetRequest } from "../lib/budgetRequestCodec";
 export type Busy =
   | null
   | "connect"
-  | "friendbot"
   | "deploy"
   | "fund"
   | "whitelist"
@@ -20,8 +18,6 @@ export type Busy =
   | "spend"
   | "session"
   | "revoke"
-  | "task"
-  | "loop"
   | "pause"
   | "withdraw"
   | "limits"
@@ -43,8 +39,8 @@ export interface DeployExtras {
   capXlm?: string;
   hours?: string;
   fundXlm?: string;
-  /** What the treasury holds. USDC opens empty — it is funded with TRY afterwards, because
-   *  the owner's wallet holds none to move in. XLM when left out. */
+  /** What the treasury holds. USDC opens empty and is deposited from the wallet afterwards;
+   *  the setup call moves XLM only. XLM when left out. */
   token?: TokenCode;
   /** The salt the form drew when it opened; it fixes the treasury's address, which an agent
    *  connected during setup was already given. A fresh one is drawn when left out. */
@@ -60,7 +56,6 @@ export interface TreasuryContextValue {
   lifecycle: Lifecycle | null;
   legacy: boolean;
   sessionActive: boolean;
-  sessionSecret: string | null;
   walletXlm: number | null | undefined;
   loading: boolean;
   busy: Busy;
@@ -68,7 +63,6 @@ export interface TreasuryContextValue {
   treasuries: TreasuryRef[];
   refresh: (opts?: { markLoading?: boolean }) => Promise<void>;
   connect: () => Promise<void>;
-  friendbot: () => Promise<ActionOutcome>;
   /** One signature: deploy + policy + first payee + Leash + funding + registry. */
   deploy: (daily: string, perTask: string, extra?: DeployExtras) => Promise<ActionOutcome>;
   openExisting: (id: string) => ActionOutcome;
@@ -76,8 +70,8 @@ export interface TreasuryContextValue {
   whitelist: (payeeAddr: string) => Promise<ActionOutcome>;
   removePayeeAddr: (payeeAddr: string) => Promise<ActionOutcome>;
   spend: (to: string, amount: string) => Promise<ActionOutcome>;
-  /** `agentPublicKey` (optional): authorise an external agent's own key instead of
-   *  generating a local session key — the eunomia-mcp handshake. */
+  /** Authorise the agent's own key (printed by `eunomia-mcp init`) — the eunomia-mcp
+   *  handshake. Refused without one: nothing is generated in the browser. */
   startLeash: (cap: string, hours: string, agentPublicKey?: string) => Promise<ActionOutcome>;
   revokeLeash: () => Promise<ActionOutcome>;
   /** Start a task budget an agent asked for (a verified budget request link). */
@@ -86,10 +80,6 @@ export interface TreasuryContextValue {
   updateMonthly: (limit: string) => Promise<ActionOutcome>;
   /** v4: a payee's monthly cap ("" or "0" removes it). */
   capPayee: (payee: string, cap: string) => Promise<ActionOutcome>;
-  runAutonomousTask: (to?: string) => Promise<ActionOutcome>;
-  /** The agent's own loop — pay, get refused, ask the owner — reported step by step as
-   *  each one lands on-chain. `onStep` receives the whole list every time one changes. */
-  runAgentLoop: (onStep: (steps: LoopStep[]) => void) => Promise<ActionOutcome>;
   togglePause: () => Promise<ActionOutcome>;
   withdraw: (to: string, amount: string) => Promise<ActionOutcome>;
   updateLimits: (daily: string, perTask: string) => Promise<ActionOutcome>;

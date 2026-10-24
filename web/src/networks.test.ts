@@ -1,75 +1,61 @@
 import { describe, expect, it } from "vitest";
 import { Asset, Networks } from "@stellar/stellar-sdk";
-import { PUBNET, TESTNET, resolveNetwork } from "./networks";
+import { PUBNET, STAND_IN_ENV, resolveNetwork } from "./networks";
 
 const FACTORY = "CBQHNAXSI55GX2GN6D67GK7BHVPSLJUGZQEU7WJ5LKR5PNUCGLIMAO4K";
 const REGISTRY = "CA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZLKERYNZGGA5SOAOPIFY6YQGAXE";
 const MAINNET = {
-  EUNOMIA_NETWORK: "pubnet",
   EUNOMIA_RPC_URL: "https://rpc.example.com",
   EUNOMIA_FACTORY_ID: FACTORY,
   EUNOMIA_REGISTRY_ID: REGISTRY,
-  EUNOMIA_DEPOSIT_CAP: "100",
 };
 
-describe("the network tables", () => {
-  it("pin each SAC to what its asset derives on that network", () => {
+describe("the network table", () => {
+  it("pins each SAC to what its asset derives on mainnet", () => {
     // A wrong id here is a treasury created over a token nobody holds.
-    expect(Asset.native().contractId(Networks.TESTNET)).toBe(TESTNET.xlmSac);
     expect(Asset.native().contractId(Networks.PUBLIC)).toBe(PUBNET.xlmSac);
-    expect(new Asset("USDC", TESTNET.usdcIssuer).contractId(Networks.TESTNET)).toBe(TESTNET.usdcSac);
     expect(new Asset("USDC", PUBNET.usdcIssuer).contractId(Networks.PUBLIC)).toBe(PUBNET.usdcSac);
   });
 
-  it("carry the passphrase the SDK knows each network by", () => {
-    expect(TESTNET.passphrase).toBe(Networks.TESTNET);
+  it("carries the passphrase the SDK knows mainnet by", () => {
     expect(PUBNET.passphrase).toBe(Networks.PUBLIC);
   });
 });
 
 describe("resolveNetwork", () => {
-  it("builds for testnet unless told otherwise", () => {
-    expect(resolveNetwork({})).toBe(TESTNET);
-    expect(resolveNetwork({ EUNOMIA_NETWORK: " testnet " })).toBe(TESTNET);
-  });
-
-  it("refuses a network it does not know", () => {
-    expect(() => resolveNetwork({ EUNOMIA_NETWORK: "mainnet" })).toThrow(/unknown/);
-  });
-
-  it("refuses a mainnet build with nothing set, naming every missing piece", () => {
+  it("refuses a build with nothing set, naming every missing piece", () => {
     let message = "";
     try {
-      resolveNetwork({ EUNOMIA_NETWORK: "pubnet" });
+      resolveNetwork({});
     } catch (e) {
       message = (e as Error).message;
     }
-    for (const k of ["EUNOMIA_RPC_URL", "EUNOMIA_FACTORY_ID", "EUNOMIA_REGISTRY_ID", "EUNOMIA_DEPOSIT_CAP"]) {
+    for (const k of ["EUNOMIA_RPC_URL", "EUNOMIA_FACTORY_ID", "EUNOMIA_REGISTRY_ID"]) {
       expect(message).toContain(k);
     }
   });
 
-  it("takes the mainnet settings from the environment, the cap in whole units", () => {
+  it("takes the settings from the environment", () => {
     const net = resolveNetwork(MAINNET);
     expect(net.name).toBe("pubnet");
     expect(net.passphrase).toBe(Networks.PUBLIC);
     expect(net.rpcUrl).toBe("https://rpc.example.com");
     expect(net.factoryId).toBe(FACTORY);
     expect(net.registryId).toBe(REGISTRY);
-    expect(net.depositCap).toBe("1000000000");
   });
 
-  it("will not point a mainnet build at testnet", () => {
-    expect(() => resolveNetwork({ ...MAINNET, EUNOMIA_RPC_URL: "https://soroban-testnet.stellar.org" })).toThrow(/testnet/);
-    expect(() => resolveNetwork({ ...MAINNET, EUNOMIA_FACTORY_ID: TESTNET.factoryId })).toThrow(/testnet contract id/);
-    expect(() => resolveNetwork({ ...MAINNET, EUNOMIA_REGISTRY_ID: TESTNET.registryId })).toThrow(/testnet contract id/);
+  it("will not point the build at a test network", () => {
+    expect(() => resolveNetwork({ ...MAINNET, EUNOMIA_RPC_URL: "https://soroban-testnet.stellar.org" })).toThrow(/test network/);
+    expect(() => resolveNetwork({ ...MAINNET, EUNOMIA_RPC_URL: "https://rpc-futurenet.stellar.org" })).toThrow(/test network/);
   });
 
-  it("refuses a plain-http RPC, a malformed id and a cap that is not a whole amount", () => {
+  it("refuses a plain-http RPC and a malformed id", () => {
     expect(() => resolveNetwork({ ...MAINNET, EUNOMIA_RPC_URL: "http://rpc.example.com" })).toThrow(/https/);
     expect(() => resolveNetwork({ ...MAINNET, EUNOMIA_FACTORY_ID: "G" + FACTORY.slice(1) })).toThrow(/FACTORY/);
-    for (const cap of ["0", "12.5", "-3", "100 USDC"]) {
-      expect(() => resolveNetwork({ ...MAINNET, EUNOMIA_DEPOSIT_CAP: cap })).toThrow(/DEPOSIT_CAP/);
-    }
+  });
+
+  it("accepts the unit tests' stand-in settings, which point at no real host", () => {
+    const net = resolveNetwork(STAND_IN_ENV);
+    expect(new URL(net.rpcUrl).hostname.endsWith(".invalid")).toBe(true);
   });
 });

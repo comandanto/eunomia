@@ -6,17 +6,9 @@ export interface NetworkConfig {
   name: NetworkName;
   passphrase: string;
   rpcUrl: string;
-  /** testnet only — the session key is the fee-paying tx source and must exist */
-  friendbot?: string;
 }
 
 export const NETWORKS: Record<NetworkName, NetworkConfig> = {
-  testnet: {
-    name: "testnet",
-    passphrase: "Test SDF Network ; September 2015",
-    rpcUrl: "https://soroban-testnet.stellar.org",
-    friendbot: "https://friendbot.stellar.org",
-  },
   // No public mainnet RPC is assumed: the operator names one.
   pubnet: {
     name: "pubnet",
@@ -25,13 +17,15 @@ export const NETWORKS: Record<NetworkName, NetworkConfig> = {
   },
 };
 
-/** EUNOMIA_NETWORK (testnet | pubnet, default testnet) + optional EUNOMIA_RPC_URL. */
+/** Stellar mainnet, through the RPC in EUNOMIA_RPC_URL (required). EUNOMIA_NETWORK may be
+ *  left out; set, it has to say pubnet — a config written for another network fails here
+ *  rather than signing against the wrong one. */
 export function resolveNetwork(env: NodeJS.ProcessEnv): NetworkConfig {
-  const name = (env.EUNOMIA_NETWORK?.trim() || "testnet") as NetworkName;
+  const name = (env.EUNOMIA_NETWORK?.trim() || "pubnet") as NetworkName;
   const base = NETWORKS[name];
-  if (!base) throw new Error(`Unknown EUNOMIA_NETWORK "${name}" — use testnet or pubnet`);
+  if (!base) throw new Error(`Unknown EUNOMIA_NETWORK "${name}" — eunomia-mcp runs on pubnet only`);
   const rpcUrl = env.EUNOMIA_RPC_URL?.trim() || base.rpcUrl;
-  if (!rpcUrl) throw new Error(`EUNOMIA_RPC_URL is required on ${name}`);
+  if (!rpcUrl) throw new Error("EUNOMIA_RPC_URL is required — the Stellar mainnet RPC this agent talks to");
   return { ...base, rpcUrl };
 }
 

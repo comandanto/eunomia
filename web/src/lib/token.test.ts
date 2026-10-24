@@ -4,15 +4,15 @@ import { USDC_TOKEN, USDC_ISSUER, tokenCodeOf, tokenIdOf } from "./token";
 import { XLM_SAC } from "./userTreasury";
 
 describe("token", () => {
-  it("pins USDC_TOKEN to the contract the anchor's issuer derives", () => {
-    // The issuer is the one tr-mock-anchor.fly.dev publishes in its stellar.toml. If the
-    // anchor ever changes issuers, this fails before a treasury is created over dead money.
+  it("pins USDC_TOKEN to the contract Circle's issuer derives", () => {
+    // If the id and the issuer ever disagree, this fails before a treasury is created over a
+    // token nobody holds.
     const usdc = new Asset("USDC", USDC_ISSUER);
-    expect(usdc.contractId(Networks.TESTNET)).toBe(USDC_TOKEN);
+    expect(usdc.contractId(Networks.PUBLIC)).toBe(USDC_TOKEN);
   });
 
   it("pins XLM_SAC to the native asset's contract", () => {
-    expect(Asset.native().contractId(Networks.TESTNET)).toBe(XLM_SAC);
+    expect(Asset.native().contractId(Networks.PUBLIC)).toBe(XLM_SAC);
   });
 
   it("labels a treasury by the token it holds", () => {

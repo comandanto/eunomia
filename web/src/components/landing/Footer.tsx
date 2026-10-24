@@ -91,10 +91,12 @@ export default function Footer() {
         <div className="lp__footer-row" style={{ marginTop: 30 }}>
           <span className="lp__badge">Stellar {NETWORK_LABEL}</span>
           <span>Open source, every line readable — MIT.</span>
-          <span>
-            {TRACTION.treasuries} treasuries · {TRACTION.blocked} out-of-policy attempts stopped
-            — all checkable above.
-          </span>
+          {TRACTION && (
+            <span>
+              {TRACTION.treasuries} treasuries · {TRACTION.blocked} out-of-policy attempts stopped
+              — all checkable above.
+            </span>
+          )}
         </div>
 
         <div className="lp__footer-row" style={{ marginTop: 14 }}>

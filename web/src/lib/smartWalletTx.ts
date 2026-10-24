@@ -10,7 +10,7 @@
 // C-address. Simulation then returns ADDRESS credentials — bound to the wallet, carrying a
 // nonce — which the passkey can sign and the relayer is free to submit from anywhere.
 //
-// Measured on testnet before this was written: a G-address deployer yields
+// Measured on chain before this was written: a G-address deployer yields
 // `sorobanCredentialsSourceAccount`, a C-address deployer yields `sorobanCredentialsAddress`.
 import {
   Account,

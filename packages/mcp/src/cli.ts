@@ -5,7 +5,7 @@ import { parseArgs } from "node:util";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { computeBudget } from "./budget.js";
 import { CLIENTS, writeClientConfig, type ClientName } from "./clientConfig.js";
-import { createCredential, fundOnTestnet, isValidContractId, saveCredential } from "./credential.js";
+import { createCredential, isValidContractId, saveCredential } from "./credential.js";
 import { addTrustline } from "./float.js";
 import { toStroops, txUrl } from "./format.js";
 import { homeDir, resolveNetwork } from "./network.js";
@@ -20,10 +20,10 @@ const USAGE = `eunomia-mcp ${SERVER_VERSION} — connect an AI agent to a Eunomi
 
 usage:
   eunomia-mcp [serve]                       run the MCP server on stdio (what Claude spawns)
-  eunomia-mcp init --treasury <C…> [--network testnet|pubnet] [--client claude-desktop|cursor|claude-code]
-                  [--force] [--skip-fund]   create this agent's credential, print the key the owner authorises,
+  eunomia-mcp init --treasury <C…> [--client claude-desktop|cursor|claude-code] [--force]
+                                            create this agent's credential, print the key the owner authorises,
                                             and with --client add the server to that client's config
-  eunomia-mcp trustline [--treasury <C…>]   let the agent's account hold the treasury's token (mainnet USDC;
+  eunomia-mcp trustline [--treasury <C…>]   let the agent's account hold the treasury's token (USDC;
                                             once, before the first fund_float)
   eunomia-mcp status [--treasury <C…>]      what this agent may spend right now (JSON)
   eunomia-mcp pay --to <G…|C…> --amount <decimal> [--task <n>] [--treasury <C…>] [--record-rejection]
@@ -34,7 +34,8 @@ usage:
   eunomia-mcp config [--client json|claude-code|claude-desktop] [--treasury <C…>]
                                             print the MCP client configuration for this treasury
 
-env: EUNOMIA_TREASURY, EUNOMIA_NETWORK (default testnet), EUNOMIA_RPC_URL, EUNOMIA_HOME (~/.eunomia), EUNOMIA_AGENT_SECRET,
+Stellar mainnet only.
+env: EUNOMIA_TREASURY, EUNOMIA_RPC_URL (required: a mainnet RPC), EUNOMIA_HOME (~/.eunomia), EUNOMIA_AGENT_SECRET,
      EUNOMIA_APP_URL (where budget requests link; default https://eunomia.finance)
 `;
 
@@ -50,7 +51,6 @@ const { values: opts, positionals } = parseArgs({
     task: { type: "string" },
     "record-rejection": { type: "boolean", default: false },
     force: { type: "boolean", default: false },
-    "skip-fund": { type: "boolean", default: false },
     help: { type: "boolean", short: "h", default: false },
   },
 });
@@ -116,31 +116,22 @@ async function init(): Promise<void> {
   const home = homeDir(env);
   const cred = createCredential(net.name, treasury);
   const path = saveCredential(home, cred, { force: opts.force });
-  let funded = net.friendbot ? "skipped (--skip-fund)" : "mainnet: fund it yourself (see below)";
-  if (!opts["skip-fund"] && net.friendbot) {
-    try {
-      await fundOnTestnet(net, cred.agentPublicKey);
-      funded = "funded via friendbot";
-    } catch (e) {
-      funded = `NOT funded — ${e instanceof Error ? e.message : String(e)}`;
-    }
-  }
   console.log(`Credential saved: ${path}`);
-  console.log(`Agent public key: ${cred.agentPublicKey}   (${funded})`);
+  console.log(`Agent public key: ${cred.agentPublicKey}   (not funded yet — see below)`);
   console.log(`
 Next, the treasury OWNER authorises this key (the secret stays on this machine):
   Eunomia dashboard → your treasury → Agent → paste the public key above, set a cap
-  and a duration → Start Leash (signed with the owner's passkey or wallet).
+  and a duration → Authorise agent (signed with the owner's passkey or wallet).
   Revoke it from the same page at any time.
 
-${net.friendbot ? "" : MAINNET_FUNDING}${clientStep(env)}
+${FUNDING}${clientStep(env)}
 
 Check it: eunomia-mcp status --treasury ${treasury}
 `);
 }
 
-const MAINNET_FUNDING = `On mainnet the agent's account needs XLM before it can do anything: send it ~3 XLM
-(account reserve, the token trustline and fees), then run: eunomia-mcp trustline --network pubnet
+const FUNDING = `The agent's account needs XLM before it can do anything: send it ~3 XLM (account
+reserve, the token trustline and fees), then run: eunomia-mcp trustline
 
 `;
 

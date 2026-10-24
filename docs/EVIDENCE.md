@@ -1,5 +1,10 @@
 # Instawards evidence — Eunomia
 
+> **Historical record.** This is the evidence submitted for the first Instawards Statement of
+> Work, which ran on Stellar testnet. Eunomia has since moved to mainnet and no longer uses the
+> test network; the transactions below stay as they were submitted, and disappear from the
+> explorer at SDF's next testnet reset. Today's deployment: [`DEPLOYMENT.md`](../DEPLOYMENT.md).
+
 Evidence for the Instawards Statement of Work (submitted 1 September 2026, sprint started
 upon approval on 14 September), laid out in the order of the SOW's section 6.1. Every
 transaction is on **Stellar testnet** and opens on stellar.expert; nothing needs a wallet

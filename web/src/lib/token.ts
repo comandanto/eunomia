@@ -1,7 +1,6 @@
-// A treasury holds exactly one token, fixed when it is created. Two are offered: XLM, funded
-// from the owner's wallet, and USDC — on testnet the TRY anchor's, funded with TRY through
-// the anchor; on mainnet Circle's. Both are 7-decimal, so every amount in the app is the same
-// arithmetic under a different label.
+// A treasury holds exactly one token, fixed when it is created. Two are offered: XLM and
+// Circle's USDC, both deposited from the owner's wallet. Both are 7-decimal, so every amount
+// in the app is the same arithmetic under a different label.
 import { USDC_ISSUER, USDC_TOKEN, XLM_SAC } from "../config";
 
 /** The USDC Stellar Asset Contract of this build's network. Derivable from the issuer

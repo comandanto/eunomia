@@ -2,11 +2,12 @@
 // back/forward keep the current page; legacy hashes (pre-shell #workspace links shared
 // in docs and chats) keep working via the redirect table.
 export type AppPage = "overview" | "payments" | "agent" | "activity" | "settings";
-export type View = AppPage | "landing" | "dashboard" | "wallet";
+export type View = AppPage | "landing" | "wallet";
 
 export const APP_PAGES = ["overview", "payments", "agent", "activity", "settings"] as const;
-const STANDALONE = ["dashboard", "wallet"] as const;
-const LEGACY: Record<string, View> = { workspace: "overview" };
+const STANDALONE = ["wallet"] as const;
+// #dashboard was the guided testnet demo; links to it land on the product now.
+const LEGACY: Record<string, View> = { workspace: "overview", dashboard: "overview" };
 // In-page section ids on the landing page. They live in the hash too, so the router has
 // to leave them alone: rewriting or scrolling on these kills the anchor jump.
 const LANDING_ANCHORS = ["proof", "how", "guarantees", "privacy"] as const;

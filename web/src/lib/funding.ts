@@ -1,10 +1,7 @@
-// Testnet funding helpers — a fresh wallet has 0 XLM, so the very first workspace
-// action (deploying a treasury) fails with an opaque error. Check the wallet's native
-// balance via Horizon and offer friendbot funding when it's empty. Pure functions with
-// an injectable fetch, so they're unit-testable.
-import { HORIZON_URL, IS_TESTNET, NETWORK_PASSPHRASE, RPC_URL, SIMULATION_SOURCE, XLM_SAC } from "../config";
-
-const FRIENDBOT_URL = "https://friendbot.stellar.org";
+// Wallet balance helpers — a fresh wallet has 0 XLM, so the very first workspace action
+// (deploying a treasury) would fail with an opaque error. Read what the wallet holds and say
+// so before the owner signs. The Horizon read takes an injectable fetch, so it unit-tests.
+import { HORIZON_URL, NETWORK_PASSPHRASE, RPC_URL, SIMULATION_SOURCE, XLM_SAC } from "../config";
 
 /** Minimum native balance (XLM) to comfortably deploy, fund, and use a treasury. */
 export const MIN_XLM = 20;
@@ -57,55 +54,6 @@ export async function getTokenBalance(sac: string, address: string): Promise<num
 /** XLM held by a contract account, from the native SAC. */
 export function getContractXlmBalance(address: string): Promise<number | null> {
   return getTokenBalance(XLM_SAC, address);
-}
-
-/** Ask friendbot to create + fund the account with test XLM. Friendbot only works for
- *  accounts that don't exist on testnet yet — an existing account gets a clear message.
- *
- *  A smart wallet cannot be funded this way at all: friendbot creates classic accounts, and a
- *  classic payment cannot even reach a contract address. Those go to our dispenser instead. */
-export async function fundWithFriendbot(
-  address: string,
-  fetchFn: typeof fetch = fetch,
-): Promise<void> {
-  if (!IS_TESTNET) throw new Error("Free XLM exists only on testnet.");
-  if (isContractAddress(address)) return dispenseToWallet(address, fetchFn);
-
-  const res = await fetchFn(`${FRIENDBOT_URL}/?addr=${encodeURIComponent(address)}`);
-  if (res.ok) return;
-  if (res.status === 400) {
-    throw new Error(
-      "This account is already funded — friendbot only tops up brand-new testnet accounts.",
-    );
-  }
-  throw new Error(`Friendbot error ${res.status} — try again in a moment.`);
-}
-
-/** Cheap shape check — a full StrKey validation would pull the SDK into this module, which
- *  is otherwise fetch-only and unit-tests without one. */
-function isContractAddress(address: string): boolean {
-  return address.startsWith("C") && address.length === 56;
-}
-
-/** Starting funds for a smart wallet, sent by the server-side dispenser (one allocation per
- *  wallet). The endpoint owns the policy; this only translates its answers. */
-async function dispenseToWallet(wallet: string, fetchFn: typeof fetch): Promise<void> {
-  const res = await fetchFn("/api/faucet", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ wallet }),
-  });
-  if (res.ok) return;
-
-  const body = (await res.json().catch(() => ({}))) as { error?: string };
-  if (res.status === 409) {
-    throw new Error("This wallet already has its starting test XLM.");
-  }
-  if (res.status === 429) {
-    throw new Error(body.error ?? "The testnet faucet has hit its daily limit. Try again tomorrow.");
-  }
-  console.error(`[faucet] ${res.status}:`, body.error ?? "(no detail)");
-  throw new Error("Couldn't send starting funds. Try again shortly.");
 }
 
 /** true when the balance is too low to deploy + fund a treasury. */

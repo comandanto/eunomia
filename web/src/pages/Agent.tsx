@@ -1,12 +1,11 @@
 // The Leash: hand the treasury to an autonomous agent on a time-bound, spend-capped session
-// key. An active Leash is the one dark panel on this page — live cap, countdown, the demo
-// task, revoke. Inactive, the page explains the model and starts one. The single-spender
-// rule and the "registered but unfunded key" recovery path live in the provider.
+// key the agent holds itself. An active Leash is the one dark panel on this page — live cap,
+// countdown, revoke. Inactive, the page explains the model and authorises one. The
+// single-spender rule lives in the provider.
 import { useEffect, useRef, useState } from "react";
-import AgentLoop from "../components/AgentLoop";
 import BudgetRequestCard from "../components/BudgetRequestCard";
 import ExceptionRequests from "../components/ExceptionRequests";
-import { EXPLORER, IS_TESTNET, fmtXlm, shortAddr } from "../config";
+import { EXPLORER, fmtXlm, shortAddr } from "../config";
 import { useNow } from "../lib/useNow";
 import { useTreasury } from "../state/useTreasury";
 
@@ -86,7 +85,7 @@ export default function Agent() {
               <div className="verdict__why">
                 <span className="num">{shortAddr(session.agent)}</span>
                 {" · "}
-                {t.sessionSecret ? "key on this device" : "external agent (eunomia-mcp)"} · pays without asking; every payment
+                your agent (eunomia-mcp) · pays without asking; every payment
                 is still checked against your rules on Stellar.
               </div>
               {taskPayees.length > 0 && (
@@ -123,7 +122,7 @@ export default function Agent() {
               </label>
             </div>
             <label className="lab">
-              <span className="eyebrow">Agent public key{IS_TESTNET ? " (optional)" : ""}</span>
+              <span className="eyebrow">Agent public key</span>
               <input
                 className="field field--mono"
                 aria-label="External agent public key"
@@ -134,22 +133,17 @@ export default function Agent() {
               />
             </label>
             <div className="panel__note">
-              {IS_TESTNET && "Leave empty to run the built-in demo agent on this device. "}
-              {IS_TESTNET ? "Paste a key to authorise an external agent" : "Paste your agent's key"} (Claude via eunomia-mcp) —
+              Paste your agent's key (Claude via eunomia-mcp) —
               its secret never leaves the agent's machine; you only sign the cap and the deadline.
             </div>
             <div>
               <button className="btn btn--lg" onClick={() => void doStart()} disabled={!!t.busy} type="button">
-                {t.busy === "session" ? "Starting…" : agentKey.trim() ? "Authorise agent" : "Start Leash"}
+                {t.busy === "session" ? "Starting…" : "Authorise agent"}
               </button>
             </div>
             {err && <div className="err">{err}</div>}
           </section>
         )}
-
-        {/* The claim this product makes, as a thing that runs. Only the agent whose key is on
-            this device can be driven from here; an external one runs from its own machine. */}
-        {active && t.sessionSecret && <AgentLoop />}
 
         {/* Requests the agent filed on its own account (eunomia-mcp request_exception). They
             belong under the Leash they came from, on the page where the owner resolves them. */}

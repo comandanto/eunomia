@@ -1,6 +1,6 @@
-// Per-user treasury operations: deploy a fresh treasury owned by the connected wallet,
-// fund it, govern its policy, and spend from it — all signed by the user's wallet. This is
-// the per-user analogue of eunomia.ts (which drives the single embedded-agent demo treasury).
+// Per-user treasury operations: check that a treasury is ours and the wallet's, fund it,
+// govern its policy, and spend from it — all signed by the user's wallet. Creating one goes
+// through the factory (createTreasury.ts).
 import {
   Address,
   BASE_FEE,
@@ -16,13 +16,13 @@ import { contractErr, depositErr, errText } from "./wallet-errors";
 import type { SubmittableTx, TxExecutor } from "./executor";
 import type { TokenCode } from "./token";
 import { TREASURY_WASM_HASH } from "./treasuryWasm";
-import { DEPOSIT_CAP_STROOPS, NETWORK_PASSPHRASE, RPC_URL, XLM_SAC } from "../config";
+import { NETWORK_PASSPHRASE, RPC_URL, XLM_SAC } from "../config";
 
 // The native XLM SAC — the token an XLM treasury holds and spends.
 export { XLM_SAC };
-// Treasury WASM already installed on-chain — deploy just instantiates a new contract from it.
-// Defined in its own module so the relay, which decides whether to sponsor the deploy, reads
-// the very same value; see the drift note in relayGuard.allowedWasmHashes.
+// The treasury code the factory instantiates. Defined in its own module so the relay, which
+// decides what it sponsors, reads the very same value; see the drift note in
+// relayGuard.allowedWasmHashes.
 export { TREASURY_WASM_HASH };
 
 const XLM_UNIT = 10_000_000;
@@ -52,14 +52,11 @@ export interface EunomiaState {
 
 /** Whether the connected wallet actually administers this treasury.
  *
- *  TreasuryRegistry.register() stores an UNVERIFIED claim — it checks that the
- *  caller signed, never that the registered contract is a treasury they admin. The
- *  app then auto-adopts the newest registered entry on a fresh device. So one
- *  signature on a zero-value "back up your treasury" call is enough to point a
- *  victim at a treasury the attacker administers, and the victim funds it.
- *
- *  The chain already answers this: the treasury's own `admin` must be the wallet in
- *  hand. Fails closed — no state or no wallet means no. */
+ *  The app adopts the newest treasury registered under a wallet on a fresh device. The
+ *  registry now refuses a treasury whose admin is not the owner (review H2), but it can only
+ *  ask the contract, and an id can also arrive another way; so the app asks again: the
+ *  treasury's own `admin` must be the wallet in hand. Paired with `runsTreasuryCode`, which
+ *  makes sure the answer comes from our code. Fails closed — no state or no wallet means no. */
 export function isOwnedBy(state: EunomiaState | null, wallet: string | null): boolean {
   return !!state && !!wallet && state.admin === wallet;
 }
@@ -105,57 +102,30 @@ export function makeTreasury(contractId: string, executor: TxExecutor): Treasury
   };
 }
 
-/** The `__constructor(admin, agent, token, daily_limit, per_task_limit, deposit_cap)`
- *  arguments, in the order the contract declares them. The deposit cap is the factory's, so
- *  a treasury deployed directly is bounded exactly like one the factory made. Only the smart-wallet deploy path needs them positionally
- *  — the contract client builds them from its own spec. */
-function constructorArgs(owner: string, dailyXlm: number, perTaskXlm: number): xdr.ScVal[] {
-  return [
-    new Address(owner).toScVal(),
-    new Address(owner).toScVal(),
-    new Address(XLM_SAC).toScVal(),
-    nativeToScVal(toStroops(dailyXlm), { type: "i128" }),
-    nativeToScVal(toStroops(perTaskXlm), { type: "i128" }),
-    nativeToScVal(DEPOSIT_CAP_STROOPS, { type: "i128" }),
-  ];
+/** The wasm a contract runs, read from its instance entry (hex). null when there is no such
+ *  contract, or it runs no wasm (a Stellar Asset Contract).
+ *
+ *  What makes a treasury ours is its code, not what it says about itself: a contract written
+ *  to lie can answer `get_config` with any admin it likes, pass the ownership check, and take
+ *  whatever the owner deposits. The code hash is the one thing it cannot choose. */
+export async function contractWasmHash(contractId: string): Promise<string | null> {
+  const key = xdr.LedgerKey.contractData(
+    new xdr.LedgerKeyContractData({
+      contract: new Address(contractId).toScAddress(),
+      key: xdr.ScVal.scvLedgerKeyContractInstance(),
+      durability: xdr.ContractDataDurability.persistent(),
+    }),
+  );
+  const { entries } = await new rpc.Server(RPC_URL).getLedgerEntries(key);
+  const exec = entries[0]?.val.contractData().val().instance().executable();
+  if (!exec || exec.switch() !== xdr.ContractExecutableType.contractExecutableWasm()) return null;
+  return exec.wasmHash().toString("hex");
 }
 
-/** Deploy a fresh treasury owned by `address` (admin = agent = the wallet). Returns its id. */
-export async function deployTreasury(
-  executor: TxExecutor,
-  dailyXlm: number,
-  perTaskXlm: number,
-): Promise<string> {
-  // A smart wallet has to deploy as itself: it holds no XLM to source a transaction from, and
-  // the relayer that pays on its behalf only accepts authorisation bound to an address.
-  if (executor.deployContract) {
-    return executor.deployContract(
-      TREASURY_WASM_HASH,
-      constructorArgs(executor.address, dailyXlm, perTaskXlm),
-    );
-  }
-
-  const tx = await Client.deploy(
-    {
-      admin: executor.address,
-      agent: executor.address,
-      token: XLM_SAC,
-      daily_limit: toStroops(dailyXlm),
-      per_task_limit: toStroops(perTaskXlm),
-      deposit_cap: DEPOSIT_CAP_STROOPS,
-    },
-    {
-      wasmHash: TREASURY_WASM_HASH,
-      networkPassphrase: NETWORK_PASSPHRASE,
-      rpcUrl: RPC_URL,
-      publicKey: executor.address,
-      signTransaction: executor.signer.signTransaction,
-    },
-  );
-  // The deployed id is known from the assembled transaction, so it survives either submit path.
-  const contractId = tx.result.options.contractId;
-  await executor.submit(tx);
-  return contractId;
+/** Whether `contractId` runs the treasury code this app ships — every treasury the factory
+ *  makes does. */
+export async function runsTreasuryCode(contractId: string): Promise<boolean> {
+  return (await contractWasmHash(contractId)) === TREASURY_WASM_HASH;
 }
 
 /** Whether this treasury runs v4 or later — read from the chain, not assumed from when it was
@@ -196,8 +166,8 @@ export async function fundTreasury(
       throw why ? new Error(why) : e;
     }
   }
-  // Before v4, a USDC treasury was only ever funded through the testnet anchor.
-  if (unit !== "XLM") throw new Error("This treasury predates deposits — add USDC to it through the anchor.");
+  // A bare transfer is the pre-v4 path, and it moves native XLM only.
+  if (unit !== "XLM") throw new Error("This treasury predates deposits and cannot take USDC from here.");
 
   if (executor.transferXlm) {
     await executor.transferXlm(contractId, toStroops(amount));

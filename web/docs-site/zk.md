@@ -4,6 +4,12 @@ A business can't publish who it pays and how much on a public ledger — but its
 auditor, or counterparty still needs to know the spending stayed inside the rules.
 Eunomia's answer: **prove compliance, reveal nothing.**
 
+::: info Not in the mainnet beta
+The verifier is not deployed on mainnet yet. Its trusted setup is a single-party
+development setup, and a mainnet verifier needs a multi-party ceremony first. Everything
+below was built and verified end to end before mainnet.
+:::
+
 ## What is proven
 
 A Groth16 (BN254) proof, verified **on-chain** by the Compliance Verifier contract,
@@ -27,8 +33,8 @@ Public signals: `[dailyLimit, perTaskLimit, whitelistRoot, periodId, periodSpent
   happened, cannot attest. Only that treasury's admin can submit one.
 - **Periods close and only move forward.** A period must be over before it can be attested
   (`#6`), and each treasury's periods strictly advance (`#8`) — a compliant proof can't be
-  replayed to mask a later period. The replay (`#8`) and the fabricated batch (`#9`) are
-  both rejected live on testnet.
+  replayed to mask a later period. The replay (`#8`) and the fabricated batch (`#9`) were
+  both rejected on chain before mainnet.
 - **Fail-closed input validation.** Malformed proof or signal lengths and non-canonical
   field encodings trap with typed errors instead of undefined behavior.
 
@@ -46,8 +52,6 @@ npx tsx src/check-attestation.ts --tx <attestation tx hash>
 The payee root is rebuilt from real Stellar addresses: a payee's field element is the top
 248 bits of SHA-256 over its address, the tree is built over the sorted set, and every
 member must be confirmed by the treasury's `is_payee` before the root is published.
-A live attestation over real agent payments, with its hash:
-[evidence](https://github.com/eunomia-finance/eunomia/blob/main/docs/EVIDENCE.md#the-loop-on-28-29-september).
 
 ## Honest scope
 
@@ -56,8 +60,8 @@ A live attestation over real agent payments, with its hash:
   roadmap work — see [Roadmap](/roadmap).
 - If settlement moves real tokens to revealed payees, those transfers stay visible at the
   token-contract layer; transfer-level privacy is the shielded-pool track.
-- The Groth16 setup is a single-party dev setup; a multi-party ceremony is a mainnet
-  prerequisite.
+- The Groth16 setup is a single-party dev setup; a multi-party ceremony is the prerequisite
+  for deploying the verifier on mainnet.
 
 ## Composability: Eunomia as a policy for confidential tokens
 

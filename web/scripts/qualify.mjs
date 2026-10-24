@@ -3,8 +3,7 @@
 // Deploying and registering a treasury is free to the person doing it: our relay sponsors
 // the fee, and passkey sign-up automates fine (a virtual WebAuthn authenticator is how our
 // own E2E signed in). So "registered a treasury" alone cannot carry evidence weight. Moving
-// value into one can't be faked for free — on testnet it takes an allocation from the
-// dispenser, which is capped per wallet and per day.
+// value into one can't be faked for free — it takes the owner's own XLM or USDC.
 //
 // Kept pure and separate from the counting script so the rule is testable without a network.
 

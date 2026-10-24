@@ -13,7 +13,7 @@
 import { assertAssembledAuth } from "./authCheck";
 import { walletOnlyLimits } from "./recovery";
 // Static, never `await import()`: a dynamic import turns the module into a namespace object
-// the bundler must keep whole, testnet-only constants included.
+// the bundler must keep whole, every unused constant included.
 import { NETWORK_PASSPHRASE, RP_ID, RPC_URL, WALLET_WASM_HASH } from "../config";
 
 export interface PasskeyIdentity {

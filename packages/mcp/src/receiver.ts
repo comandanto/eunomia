@@ -2,7 +2,7 @@
 // payee the token itself refuses: a classic G… account holds a non-native asset only once
 // it trusts the issuer, and without that trustline the token contract stops the transfer
 // inside pay() with its own error #13 (TrustlineMissingError). The first agent to hit it
-// paid its own freshly made key — friendbot funds that with XLM and nothing else.
+// paid its own freshly made key, which held XLM and nothing else.
 //
 // Contracts (C…) hold any token without a trustline, the native asset needs none, and an
 // issuer holds its own asset, so only a G… payee of an issued asset is checked.

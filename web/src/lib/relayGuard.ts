@@ -14,8 +14,7 @@ const CONTRACT_ID = /^C[A-Z2-7]{55}$/;
 /** Wasm hashes the relay will sponsor: whatever the environment names, plus every treasury
  *  version this app has deployed — the current one and the ones before it.
  *
- *  Neither of those is configuration, for the same reason the native SAC is hardcoded in
- *  the contract allowlist. Miss the current hash and nobody can create a treasury at all;
+ *  Neither of those is configuration. Miss the current hash and nobody can create a treasury at all;
  *  miss an old one and the people who already have a treasury cannot spend from it, because
  *  their contract is immutable and the passkey path has no other way to pay a fee. Both
  *  mistakes were made a day apart: the first refused every sign-up with 403 for two days,
@@ -83,8 +82,8 @@ const ADDRESS_CREDENTIALS = new Set(["sorobanCredentialsAddress", "sorobanCreden
  *
  *  The relay sources and signs the transaction, so a `sourceAccount` credential is
  *  satisfied by the relay's own signature: it authorises as the fee account, not the user.
- *  Admitted alongside the native SAC, one such entry on `transfer(from = relay, ...)` would
- *  hand anyone the dispenser's balance. Genuine passkey calls always carry address-bound
+ *  On any token the relay holds, one such entry on `transfer(from = relay, ...)` would hand
+ *  anyone the fee account's balance. Genuine passkey calls always carry address-bound
  *  credentials signed by the user's wallet, so nothing legitimate is refused.
  *
  *  `relayAddress`, when given, may never be the address an entry authorises as: the relay

@@ -9,9 +9,11 @@ describe("viewFromHash", () => {
   it("redirects legacy #workspace to overview", () => {
     expect(viewFromHash("#workspace")).toBe("overview");
   });
-  it("keeps dashboard and wallet as standalone views", () => {
-    expect(viewFromHash("#dashboard")).toBe("dashboard");
+  it("keeps wallet as a standalone view", () => {
     expect(viewFromHash("#wallet")).toBe("wallet");
+  });
+  it("sends the retired #dashboard demo link to the product", () => {
+    expect(viewFromHash("#dashboard")).toBe("overview");
   });
   it("falls back to landing on unknown or empty", () => {
     expect(viewFromHash("")).toBe("landing");
@@ -27,7 +29,7 @@ describe("hashForView", () => {
   it("maps landing to the empty hash and pages to themselves", () => {
     expect(hashForView("landing")).toBe("");
     expect(hashForView("overview")).toBe("overview");
-    expect(hashForView("dashboard")).toBe("dashboard");
+    expect(hashForView("wallet")).toBe("wallet");
   });
 });
 
@@ -35,7 +37,7 @@ describe("isAppPage", () => {
   it("splits app pages from standalone views", () => {
     expect(isAppPage("overview")).toBe(true);
     expect(isAppPage("settings")).toBe(true);
-    expect(isAppPage("dashboard")).toBe(false);
+    expect(isAppPage("wallet")).toBe(false);
     expect(isAppPage("landing")).toBe(false);
   });
 });

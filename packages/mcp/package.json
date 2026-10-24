@@ -44,8 +44,7 @@
     "sync:bindings": "node scripts/same.mjs --write ../treasury-client/src/index.ts src/bindings/treasury.ts",
     "check:bindings": "node scripts/same.mjs ../treasury-client/src/index.ts src/bindings/treasury.ts",
     "check:codec": "node scripts/same.mjs src/exceptionCodec.ts ../../web/src/lib/exceptionCodec.ts && node scripts/same.mjs src/budgetRequestCodec.ts ../../web/src/lib/budgetRequestCodec.ts",
-    "prepublishOnly": "npm run check:bindings && npm run check:codec && npm test && npm run build",
-    "live:spend": "tsx scripts/live-spend.ts"
+    "prepublishOnly": "npm run check:bindings && npm run check:codec && npm test && npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",

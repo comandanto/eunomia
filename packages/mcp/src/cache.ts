@@ -1,4 +1,4 @@
-// Known payees outlive the RPC's event window (~7 days on testnet). Every cached address
+// Known payees outlive the RPC's event window (about 7 days). Every cached address
 // is still verified live before it is reported, so a stale entry costs one simulation,
 // never a wrong answer. Storage is injectable so tools can be tested without a disk.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";

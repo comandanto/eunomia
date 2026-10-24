@@ -24,7 +24,7 @@ yourself is in [`docs/PLAYBOOK.md`](https://github.com/eunomia-finance/eunomia/b
 cap · **C** the agent makes its own key; the owner authorises its public half with a cap
 and an expiry, revocable instantly · **D** `eunomia-mcp` on npm (MCP server + SDK, x402
 `exact` requirements) · **E** a Groth16/BN254 proof per closed period, verified on-chain
-against the treasury's own limits, payee root and recorded total. Testnet.
+against the treasury's own limits, payee root and recorded total (not deployed in the mainnet beta). Mainnet beta, deposit-capped.
 [Architecture](https://eunomia.finance/docs/architecture) ·
 [Contracts & proofs](https://eunomia.finance/docs/contracts)
 
@@ -118,7 +118,7 @@ What the rows show, stated narrowly:
   permission a recorded transaction needs; Eunomia ships one budget model.
 - **Organisational treasury features** — Smart Treasury's multi-signer governance and
   versioned policies.
-- **Production traffic** — Nirium settles x402 on mainnet today; Eunomia is testnet-only.
+- **Production traffic** — Nirium has settled x402 on mainnet since July; Eunomia's mainnet beta is just starting.
 - **Standards alignment** — REAPP's AP2 mandate format.
 - **Transfer privacy** — SPP and Confidential Tokens hide what Eunomia's settlement still
   shows at the token layer.

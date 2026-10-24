@@ -1,7 +1,8 @@
 # Security Model
 
-Eunomia is **testnet-only** today — do not use it with real funds. The path to mainnet is
-security-gated; see [Roadmap](/roadmap) for what must land first.
+Eunomia runs on Stellar mainnet **in beta**: the code has had internal reviews, not an
+external audit, so every treasury carries a deposit cap fixed at creation. Use amounts you
+are prepared to lose; see [Roadmap](/roadmap) for what comes before the cap goes.
 
 ## The model
 
@@ -23,14 +24,11 @@ security-gated; see [Roadmap](/roadmap) for what must land first.
   the limits, the payee root and the period's total from the treasury named in the call, and
   the circuit forces the proved batch to equal that total. Only the treasury's admin can
   attest, periods are closed and strictly advancing, non-canonical encodings are rejected. A
-  fabricated batch and a replay are both rejected on testnet.
+  fabricated batch and a replay were both rejected on chain. (Not deployed in the mainnet
+  beta.)
 - **One-signature setup gives the factory no standing authority.** It deploys the treasury
   with the owner as admin and performs the setup as sub-invocations of the one call the owner
   signed; afterwards it has no role, holds no funds and cannot act on the treasury.
-- **The anchor never gets a useful signature.** A SEP-10 challenge is signed only after it is
-  proven unsubmittable, addressed to this account and home domain, and signed by the key the
-  anchor's own `stellar.toml` publishes. The key that signs is the funding account's, never
-  the owner's.
 - **Agent credentials stay on the agent's machine.** `eunomia-mcp` makes the Leash key
   locally; only its public half reaches the app, and what it can do ends when the owner
   revokes it.
@@ -60,28 +58,19 @@ malicious payee or a third party to drain a treasury.** Highlights of what was c
 the contract-side check is open) · activity telemetry is hardened but not yet verified
 against the ledger server-side, so treat those numbers as telemetry, not proof · with the
 reputation gate on, the registry's controller can admit payees at full limits (needs a
-lower cap) · a `script-src` / `connect-src` policy on the site. And the three things built
-since the last round — the **treasury factory, `eunomia-mcp` and the anchor leg — have not
-been through a review yet**; that is a precondition for mainnet. Every finding and its
-status: [`SECURITY.md`](https://github.com/eunomia-finance/eunomia/blob/main/SECURITY.md).
+lower cap). Every finding and its status:
+[`SECURITY.md`](https://github.com/eunomia-finance/eunomia/blob/main/SECURITY.md).
 
 ## Known limitations (honest scope)
 
-- **Session secrets live in the browser** — acceptable on testnet precisely because the
-  credential is bounded (cap + expiry + instant revoke); mainnet needs hardened key
-  storage and fee sponsorship.
-- **So does the funding account's key** — the device-held key between the anchor and a
-  treasury. It is a corridor: it holds USDC only between the anchor's payment and the
-  forward that follows. Whoever steals it can take what is in the corridor at that moment,
-  and nothing from the treasury. With SEP-45 on the anchor's side it disappears.
-- **The anchor is a counterparty, and today a sandbox** — its bank and KYC are simulated.
-  The TRY → USDC leg cannot be atomic: between the bank transfer and the anchor's payment
-  the owner holds a claim on the anchor that no contract enforces.
+- **The agent's key is a file on the agent's machine** — bounded by design (cap + expiry +
+  instant revoke), so a leak is survivable, but whoever holds it can spend up to the Leash's
+  cap until the owner revokes it.
 - **The ZK layer attests after the fact, and proves the total rather than the breakdown** —
-  `pay()` does not yet require a proof, and the trusted setup is single-party (see
-  [Confidential compliance](/zk)).
-- **The reputation oracle is a stand-in** — scores are admin-set on testnet; production
-  targets the stellar-8004 registries.
+  `pay()` does not yet require a proof, and the trusted setup is single-party, which is why
+  the verifier is not deployed in the mainnet beta (see [Confidential compliance](/zk)).
+- **The reputation oracle is a stand-in** — not deployed on mainnet; production targets the
+  stellar-8004 registries.
 
 ## Reporting a vulnerability
 

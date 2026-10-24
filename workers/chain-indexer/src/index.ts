@@ -12,7 +12,7 @@ import {
 } from "./decode";
 
 export interface Env {
-  NETWORK: string; // "testnet" | "mainnet" — the label stored with every row
+  NETWORK: string; // "mainnet" — the label stored with every row
   RPC_URL: string;
   REGISTRY_ID: string;
   SUPABASE_URL: string; // secret
@@ -97,6 +97,8 @@ async function loadCursor(env: Env): Promise<string | null> {
 }
 
 export async function run(env: Env): Promise<{ pages: number; registrations: number; events: number }> {
+  // Set at deploy (wrangler.jsonc). Without them a run would fail somewhere less legible.
+  if (!env.RPC_URL || !env.REGISTRY_ID) throw new Error("RPC_URL and REGISTRY_ID must be set");
   const known = await knownTreasuries(env);
   let cursor = await loadCursor(env);
   let startLedger: number | undefined;

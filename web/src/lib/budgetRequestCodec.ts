@@ -23,7 +23,8 @@ export const MAX_TASK_CHARS = 200;
 export const REQUEST_TTL_SEC = 24 * 3600;
 
 export interface BudgetRequest {
-  network: "testnet" | "pubnet";
+  /** always "pubnet": kept in the signed payload so a link can never be replayed elsewhere */
+  network: "pubnet";
   treasury: string;
   agent: string;
   /** stroops */
@@ -41,7 +42,7 @@ const isAddress = (a: string) => StrKey.isValidEd25519PublicKey(a) || StrKey.isV
 /** Everything wrong with a request, before any signature is looked at. */
 export function budgetRequestProblems(r: BudgetRequest): string[] {
   const p: string[] = [];
-  if (r.network !== "testnet" && r.network !== "pubnet") p.push(`unknown network "${r.network}"`);
+  if (r.network !== "pubnet") p.push(`network "${r.network}" is not pubnet`);
   if (!StrKey.isValidContract(r.treasury)) p.push("treasury is not a contract id");
   if (!StrKey.isValidEd25519PublicKey(r.agent)) p.push("agent is not a G… key");
   if (r.limit <= 0n) p.push("limit must be positive");

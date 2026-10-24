@@ -42,7 +42,7 @@ describe("parseOptionalXlmAmount", () => {
 });
 
 describe("isValidPaymentDest", () => {
-  // A well-known valid testnet account (StrKey Ed25519 public key).
+  // A valid StrKey Ed25519 public key.
   const G = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN7";
   it("accepts a valid G… account", () => {
     expect(isValidPaymentDest(G)).toBe(true);

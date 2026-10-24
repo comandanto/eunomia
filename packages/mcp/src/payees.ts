@@ -28,8 +28,7 @@ export function reducePayeeEvents(events: PayeeEvent[]): string[] {
 // Pagination. The RPC scans at most ~10 000 ledgers per getEvents call and hands back a
 // cursor even when that slice held no events, so "fewer events than the limit" says
 // nothing about being done — only the cursor's ledger reaching the tip does. Measured
-// on testnet 2026-09-14: a 120 960-ledger window came back as 0 events + a cursor
-// 9 999 ledgers in.
+// 2026-09-14: a 120 960-ledger window came back as 0 events + a cursor 9 999 ledgers in.
 
 export interface EventPage {
   events: PayeeEvent[];

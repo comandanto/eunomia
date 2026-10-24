@@ -278,18 +278,17 @@ test("of several acceptable options the cheapest is the one signed", async () =>
 
 // ---- where call_service may go -------------------------------------------------------
 
-test("on mainnet only https to a public host is called", async () => {
+test("only https to a public host is called", async () => {
   const { urlProblem, isPrivateAddress } = await import("./call.js");
   const publicHost = async () => ["104.18.1.1"];
-  assert.equal(await urlProblem("https://apiserver.mpprouter.dev/v1/x", "pubnet", publicHost), null);
-  assert.match((await urlProblem("http://apiserver.mpprouter.dev/v1/x", "pubnet", publicHost)) ?? "", /https only/);
-  assert.match((await urlProblem("https://169.254.169.254/latest/meta-data", "pubnet", publicHost)) ?? "", /private/);
-  assert.match((await urlProblem("https://localhost:8080/", "pubnet", publicHost)) ?? "", /local/);
-  assert.match((await urlProblem("https://evil.example/", "pubnet", async () => ["10.0.0.5"])) ?? "", /private/);
-  assert.match((await urlProblem("https://[::1]/", "pubnet", publicHost)) ?? "", /private/);
-  assert.match((await urlProblem("file:///etc/passwd", "pubnet", publicHost)) ?? "", /not allowed/);
-  // testnet keeps local sellers reachable for development
-  assert.equal(await urlProblem("http://127.0.0.1:4021/search", "testnet", publicHost), null);
+  assert.equal(await urlProblem("https://apiserver.mpprouter.dev/v1/x", publicHost), null);
+  assert.match((await urlProblem("http://apiserver.mpprouter.dev/v1/x", publicHost)) ?? "", /https only/);
+  assert.match((await urlProblem("https://169.254.169.254/latest/meta-data", publicHost)) ?? "", /private/);
+  assert.match((await urlProblem("https://localhost:8080/", publicHost)) ?? "", /local/);
+  assert.match((await urlProblem("https://evil.example/", async () => ["10.0.0.5"])) ?? "", /private/);
+  assert.match((await urlProblem("https://[::1]/", publicHost)) ?? "", /private/);
+  assert.match((await urlProblem("file:///etc/passwd", publicHost)) ?? "", /not allowed/);
+  assert.match((await urlProblem("http://127.0.0.1:4021/search", publicHost)) ?? "", /https only/);
   assert.ok(isPrivateAddress("192.168.1.10") && isPrivateAddress("100.64.0.1") && isPrivateAddress("::ffff:127.0.0.1"));
   assert.ok(!isPrivateAddress("8.8.8.8"));
 });
@@ -307,7 +306,7 @@ test("an IPv4 address dressed as IPv6 is judged as the IPv4 address", async () =
     "https://[2002:7f00:1::]/",
     "https://[::]/",
   ]) {
-    assert.match((await urlProblem(url, "pubnet", publicHost)) ?? "", /private/, url);
+    assert.match((await urlProblem(url, publicHost)) ?? "", /private/, url);
   }
   for (const ip of ["::ffff:10.0.0.1", "0:0:0:0:0:ffff:c0a8:0101", "fe80::1", "fec0::1", "fd00::1", "ff02::1", "2001:0:4136:e378::1"]) {
     assert.ok(isPrivateAddress(ip), ip);
@@ -315,7 +314,7 @@ test("an IPv4 address dressed as IPv6 is judged as the IPv4 address", async () =
   for (const ip of ["::ffff:8.8.8.8", "64:ff9b::808:808", "2606:4700::1111", "2001:4860:4860::8888"]) {
     assert.ok(!isPrivateAddress(ip), ip);
   }
-  assert.match((await urlProblem("https://evil.example/", "pubnet", async () => ["::ffff:7f00:1"])) ?? "", /private/);
+  assert.match((await urlProblem("https://evil.example/", async () => ["::ffff:7f00:1"])) ?? "", /private/);
 });
 
 test("on mainnet the address is checked again when the connection is made (DNS rebinding)", async () => {

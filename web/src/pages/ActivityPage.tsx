@@ -64,8 +64,8 @@ export default function ActivityPage() {
             </button>
           )}
           <div className="panel__note">
-            Every treasury action across Eunomia — full history, streamed live. On-chain events from the demo treasury,
-            the ZK verifier and your own treasury ride on top.
+            Every treasury action across Eunomia — full history, streamed live. On-chain events from your own
+            treasury ride on top.
           </div>
         </section>
       </div>

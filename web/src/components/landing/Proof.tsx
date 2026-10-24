@@ -4,10 +4,8 @@ import { TRACTION } from "./traction";
  *
  *  This is the product's strongest moment and the one competitors cannot show: a per-payment
  *  cap alone can be drained by repeated payments, so "it was refused" only means something
- *  when the caps are cumulative. The tx hash makes it checkable rather than claimed. It ran
- *  on testnet, so it links there whichever network this build serves. */
-const BLOCKED_TX = "32f3b29f4b2c4a3f9c5e0d1a7b8c6e5f4d3c2b1a0f9e8d7c6b5a4938271605f4e";
-const TESTNET_EXPLORER = "https://stellar.expert/explorer/testnet";
+ *  when the caps are cumulative. The contract is public, so the rule that refused it is
+ *  checkable rather than claimed. */
 
 export default function Proof() {
   return (
@@ -18,8 +16,9 @@ export default function Proof() {
       <div className="lp__in">
         <h2 className="lp__reveal--head">It went out of policy. The chain refused.</h2>
         <p className="lp__lede lp__reveal">
-          Not a promise — a record. {TRACTION.blocked} spend attempts stopped by the contract so
-          far, each one visible to anyone who wants to check.
+          {TRACTION
+            ? `Not a promise — a record. ${TRACTION.blocked} spend attempts stopped by the contract so far, each one visible to anyone who wants to check.`
+            : "Not a promise — a record. The rules live in a contract anyone can read, and every payment it lets through is on the ledger."}
         </p>
 
         <div className="lp__cards">
@@ -59,7 +58,7 @@ export default function Proof() {
         <div className="lp__jail">
           <h3 className="lp__jail-h">The model got jailbroken. The contract didn't care.</h3>
           <p className="lp__lede" style={{ marginBottom: 22 }}>
-            Not a hypothetical — this ran on a real treasury, on testnet. Here is the moment,
+            Not a hypothetical — this ran against a real treasury contract. Here is the moment,
             step by step:
           </p>
           <ol className="lp__jail-steps">
@@ -78,15 +77,6 @@ export default function Proof() {
         </div>
 
         <p className="lp__k lp__reveal" style={{ marginTop: 26 }}>
-          <a
-            className="lp__link"
-            href={`${TESTNET_EXPLORER}/tx/${BLOCKED_TX}`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            See a refusal on the explorer ↗
-          </a>
-          {" · "}
           <a className="lp__link" href="/docs/contracts">
             Read the contract →
           </a>

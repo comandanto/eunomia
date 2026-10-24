@@ -18,12 +18,11 @@ import {
   type TWalletConnectModuleParams as WalletConnectModuleParams,
 } from "@creit.tech/stellar-wallets-kit/modules/wallet-connect";
 import { rpc } from "@stellar/stellar-sdk";
-import { IS_TESTNET, NETWORK_PASSPHRASE, RPC_URL, SIMULATION_SOURCE, XLM_SAC } from "../config";
+import { NETWORK_PASSPHRASE, RPC_URL, SIMULATION_SOURCE, XLM_SAC } from "../config";
 import { makeWalletSigner, type ContractSigner } from "./walletSigner";
 import { currentDevice, logFunnel } from "./funnel";
 import { errText } from "./wallet-errors";
 import { sortWalletsForDevice } from "./walletDevice";
-import { testSignerAvailable, getTestSigner } from "./testSigner";
 import { makePasskeyWallet, realPasskeyBackend, resetPasskeyBackend } from "./passkey";
 import { makePasskeyExecutor, makeWalletExecutor, type TxExecutor } from "./executor";
 import {
@@ -87,8 +86,7 @@ const modules = sortWalletsForDevice(
 // Reown's modal defaults to its EVM catalogue: picking WalletConnect listed dozens of
 // Ethereum wallets (`getWallets?chains=eip155:1`), none of which can sign a Stellar
 // transaction. Restricting it costs nothing — of the ten Stellar-capable wallets in
-// Reown's registry, nine are `stellar:pubnet` only; Freighter is the only one that also
-// declares `stellar:testnet`. LOBSTR stays listed for the mainnet milestone.
+// Reown's registry, nine are `stellar:pubnet` only. These two are the ones we test.
 const STELLAR_WC_WALLETS = [
   "997a355c8f682468706a76cff1b004a7115f505fb962dac54b6e9b442dd1c380", // Freighter
   "76a3d548a08cf402f5c7d021f24fd2881d767084b387a5325df88bc3d4b6f21b", // LOBSTR
@@ -104,7 +102,7 @@ if (WC_PROJECT_ID) {
         url: "https://eunomia.finance",
         icons: ["https://eunomia.finance/apple-touch-icon.png"],
       },
-      allowedChains: [IS_TESTNET ? WalletConnectTargetChain.TESTNET : WalletConnectTargetChain.PUBLIC],
+      allowedChains: [WalletConnectTargetChain.PUBLIC],
       appKitOptions: {
         includeWalletIds: STELLAR_WC_WALLETS,
       } as WalletConnectModuleParams["appKitOptions"],
@@ -122,7 +120,7 @@ const defaultWalletId = modules.some((m) => m.productId === FREIGHTER_ID)
     : ALBEDO_ID;
 
 StellarWalletsKit.init({
-  network: IS_TESTNET ? Networks.TESTNET : Networks.PUBLIC,
+  network: Networks.PUBLIC,
   selectedWalletId: defaultWalletId,
   modules,
 });
@@ -227,28 +225,9 @@ export function getAddress(): string | null {
 /** Open the wallet-select modal and return the chosen address. Throws if none selected.
  *  Funnel-instrumented: a `connect_click` on open, then a `connect_result` — success (a
  *  wallet bound), error (modal rejected, e.g. no compatible wallet / user aborted), or
- *  dismissed (resolved with no wallet). This is what makes the connect-wall drop-off visible.
- *
- *  When the test-signer build flag is set AND a test key is injected, bypass the modal
- *  and "connect" the throwaway key directly — no wallet extension needed. */
+ *  dismissed (resolved with no wallet). This is what makes the connect-wall drop-off visible. */
 export async function connect(): Promise<string> {
   logFunnel({ event: "connect_click" });
-
-  if (testSignerAvailable()) {
-    const ts = getTestSigner();
-    if (ts) {
-      connectedAddress = ts.address;
-      sessionStorage.setItem(ADDR_KEY, ts.address);
-      sessionStorage.setItem(WALLET_ID_KEY, "__prism_test_signer__");
-      notifyAddress();
-      logFunnel({
-        event: "connect_result",
-        outcome: "success",
-        walletId: "__prism_test_signer__",
-      });
-      return ts.address;
-    }
-  }
 
   let address: string | undefined;
   try {
@@ -437,16 +416,7 @@ export async function executorFor(address: string): Promise<TxExecutor> {
 
 /** A contract-client `signTransaction` bound to the connected wallet. A session the wallet
  *  has already dropped is cleared here, so the chip falls back to "Connect wallet" rather
- *  than leaving the user tapping actions that never reach a wallet.
- *
- *  When the test-signer build flag is set AND the connected address matches the
- *  injected test key, sign directly with the injected secret — no wallet popup. */
+ *  than leaving the user tapping actions that never reach a wallet. */
 export function walletSignerFor(address: string): ContractSigner {
-  if (testSignerAvailable()) {
-    const ts = getTestSigner();
-    if (ts && ts.address === address) {
-      return makeWalletSigner(ts.kitSigner, address, NETWORK_PASSPHRASE);
-    }
-  }
   return makeWalletSigner(StellarWalletsKit, address, NETWORK_PASSPHRASE, () => void disconnect());
 }

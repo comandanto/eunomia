@@ -13,7 +13,7 @@ const AGENT = "GB4GJNEZ6KLZNU3TE2CHQFNPOEQL5SHPQ246OMRZRLKVVQNLZCDX2QXZ";
 const NOW = 1_800_000_000;
 const cred = {
   version: 1 as const,
-  network: "testnet" as const,
+  network: "pubnet" as const,
   treasuryId: "CTREASURY",
   agentPublicKey: AGENT,
   agentSecret: "S",
@@ -39,7 +39,7 @@ function readClient(over: Record<string, unknown> = {}) {
 
 function ctx(over: Partial<ServerContext> = {}): ServerContext {
   return {
-    net: NETWORKS.testnet,
+    net: { ...NETWORKS.pubnet, rpcUrl: "https://rpc.invalid" },
     treasuryId: "CTREASURY",
     credential: cred,
     cache: memoryCache(),
@@ -244,7 +244,7 @@ test("a payment the network took but did not confirm is pending, never a failure
     assert.equal(out.stage, "pending");
     assert.equal(out.txHash, "SENTHASH");
   }
-  const json = serializeOutcome(out, "testnet");
+  const json = serializeOutcome(out, "pubnet");
   assert.doesNotMatch(String(json.nextStep), /^retry/);
 });
 

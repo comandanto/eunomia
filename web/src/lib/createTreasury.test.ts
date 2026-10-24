@@ -4,16 +4,20 @@ import { XLM_SAC } from "./userTreasury";
 
 describe("predictTreasuryId", () => {
   it("names the address the factory really deployed to", () => {
-    // A real pair from testnet (2026-09-18): the factory was called with this salt and
-    // answered with this treasury. If the prediction ever drifts, an agent connected during
-    // setup gets a key for a treasury that does not exist.
+    // Real pairs observed on chain, before the app moved to mainnet: the factory was called
+    // with this salt and answered with this treasury. The derivation is the same on every
+    // network once its passphrase is given. If the prediction ever drifts, an agent connected
+    // during setup gets a key for a treasury that does not exist.
+    const observedOn = "Test SDF Network ; September 2015";
     const salt = Buffer.from("6bf1c83c814accb8517f129469bdc6ebaf4878d978cf8d484b6f3a832398014f", "hex");
-    expect(predictTreasuryId(salt, "CAWLFTQ4V3ZPUWRVL5RGXBBA7FMJ26EXW37GGKCGKOXO4TKABEHF2OMS")).toBe(
+    expect(predictTreasuryId(salt, "CAWLFTQ4V3ZPUWRVL5RGXBBA7FMJ26EXW37GGKCGKOXO4TKABEHF2OMS", observedOn)).toBe(
       "CBALSDCSLU5VAWG4ZD5EXDUAYXDFTC3ADNXRBJOAQFVC77PW3H6J5XZZ",
     );
-    // …and the current factory (v4, 2026-10-19, tx 538d80f2…95ad).
+    // …and a v4 factory (2026-10-19, tx 538d80f2…95ad).
     const v4 = Buffer.from("a4e1b0c7d2f3e4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f809", "hex");
-    expect(predictTreasuryId(v4)).toBe("CAJHWB3E64NEFLADW6AUR46UA4RYQSRS33KL2YQHJGBZ2C6BZIJ24B25");
+    expect(predictTreasuryId(v4, "CAP7SNLZZT6VGC7ULSBTGPIGTC5EBAFSDMA37YFYTIROJUTIYXTMANFK", observedOn)).toBe(
+      "CAJHWB3E64NEFLADW6AUR46UA4RYQSRS33KL2YQHJGBZ2C6BZIJ24B25",
+    );
   });
 
   it("depends on the salt, the factory and the network — and on nothing else", () => {
@@ -22,7 +26,7 @@ describe("predictTreasuryId", () => {
     expect(predictTreasuryId(salt)).toBe(here);
     expect(predictTreasuryId(freshSalt())).not.toBe(here);
     expect(predictTreasuryId(salt, "CBEPVXK6BN2FZ3IYHV5KQUGROFHNBWBYHKHRZ5U3O7UWGIOPFOFE4ZE7")).not.toBe(here);
-    expect(predictTreasuryId(salt, undefined, "Public Global Stellar Network ; September 2015")).not.toBe(here);
+    expect(predictTreasuryId(salt, undefined, "Test SDF Network ; September 2015")).not.toBe(here);
   });
 });
 

@@ -1,6 +1,6 @@
 // Amount + link helpers. Every Stellar SAC (XLM, USDC) uses 7 decimals, so one
 // converter serves whatever token the treasury holds.
-export type NetworkName = "testnet" | "pubnet";
+export type NetworkName = "pubnet";
 
 export const UNIT = 10_000_000n;
 
@@ -23,7 +23,6 @@ export function fromStroops(v: bigint, maxFrac = 7): string {
 }
 
 const EXPLORER: Record<NetworkName, string> = {
-  testnet: "https://stellar.expert/explorer/testnet",
   pubnet: "https://stellar.expert/explorer/public",
 };
 

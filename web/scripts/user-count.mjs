@@ -7,35 +7,47 @@
 // snapshot at docs/metrics/registered-users.json — run it periodically (or before a
 // submission) and the count never goes backwards.
 //
-// Usage:  node web/scripts/user-count.mjs            (from the repo root)
-//         node scripts/user-count.mjs                (from web/)
+// Usage:  EUNOMIA_RPC_URL=… EUNOMIA_REGISTRY_ID=… node web/scripts/user-count.mjs
+//         (the same two settings the app is built with; see web/.env.example)
 // Wallets that predate the registry can be added by hand to the JSON's "owners" map
 // (e.g. from the Supabase activity table's distinct wallet_address).
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
+import process from "node:process";
 import { fileURLToPath } from "node:url";
 import {
   Account,
   Address,
   BASE_FEE,
   Contract,
+  Networks,
   TransactionBuilder,
   rpc,
   scValToNative,
 } from "@stellar/stellar-sdk";
 import { applyFunding } from "./qualify.mjs";
 
-// Keep in sync with web/src/config.ts (plain .mjs can't import the TS module).
-const RPC_URL = "https://soroban-testnet.stellar.org";
-const REGISTRY_ID = "CBEPVXK6BN2FZ3IYHV5KQUGROFHNBWBYHKHRZ5U3O7UWGIOPFOFE4ZE7";
-const XLM_SAC = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC";
-const NETWORK_PASSPHRASE = "Test SDF Network ; September 2015";
-// Any funded account works as a simulation source; nothing is signed or submitted.
-const PROBE = "GCB32DDRIOE24JJ66IYB2V44UAYYPRA4UIPGQKM2OINHDK2NPW365XTA";
+// Keep in sync with web/src/networks.ts (plain .mjs can't import the TS module).
+const RPC_URL = process.env.EUNOMIA_RPC_URL?.trim();
+const REGISTRY_ID = process.env.EUNOMIA_REGISTRY_ID?.trim();
+if (!RPC_URL || !REGISTRY_ID) {
+  console.error("user-count — set EUNOMIA_RPC_URL and EUNOMIA_REGISTRY_ID (the app's own build settings).");
+  process.exit(1);
+}
+const NETWORK_PASSPHRASE = Networks.PUBLIC;
+// A treasury holds one of these; value in either counts.
+const TOKENS = [
+  "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA", // XLM
+  "CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75", // Circle USDC
+];
+// Any existing account works as a simulation source; nothing is signed or submitted.
+// Circle's USDC issuer, as in networks.ts.
+const PROBE = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN";
 const TARGET = 50;
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const SNAPSHOT = join(repoRoot, "docs", "metrics", "registered-users.json");
+// Mainnet's own snapshot. registered-users.json beside it is the retired testnet count.
+const SNAPSHOT = join(repoRoot, "docs", "metrics", "registered-users-mainnet.json");
 const EXCLUDE = join(repoRoot, "docs", "metrics", "e2e-exclude.json");
 
 /** Wallets that must never count as users (E2E smoke throwaways) — see the file's note. */
@@ -82,15 +94,15 @@ async function fetchRegistrations() {
   return out;
 }
 
-/** XLM a treasury holds, read from the native SAC by simulation. Null when unreadable —
- *  treated as "no evidence of funding", never as evidence of absence. */
-async function treasuryBalance(server, contractId) {
+/** What a treasury holds of one token, read from its SAC by simulation. Null when unreadable
+ *  — treated as "no evidence of funding", never as evidence of absence. */
+async function treasuryBalance(server, token, contractId) {
   try {
     const tx = new TransactionBuilder(new Account(PROBE, "0"), {
       fee: BASE_FEE,
       networkPassphrase: NETWORK_PASSPHRASE,
     })
-      .addOperation(new Contract(XLM_SAC).call("balance", new Address(contractId).toScVal()))
+      .addOperation(new Contract(token).call("balance", new Address(contractId).toScVal()))
       .setTimeout(30)
       .build();
     const sim = await server.simulateTransaction(tx);
@@ -107,10 +119,12 @@ async function fundedOwners(owners) {
   const found = new Set();
   for (const [owner, entry] of Object.entries(owners)) {
     if (entry.funded) continue; // already established; the flag is sticky
-    for (const treasury of entry.treasuries) {
-      if ((await treasuryBalance(server, treasury)) > 0) {
-        found.add(owner);
-        break;
+    funded: for (const treasury of entry.treasuries) {
+      for (const token of TOKENS) {
+        if ((await treasuryBalance(server, token, treasury)) > 0) {
+          found.add(owner);
+          break funded;
+        }
       }
     }
   }

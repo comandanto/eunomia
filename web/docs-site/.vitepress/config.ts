@@ -71,7 +71,6 @@ export default defineConfig({
         items: [
           { text: `What is ${NAME}?`, link: "/" },
           { text: "Architecture", link: "/architecture" },
-          { text: "The anchor leg (TRY → USDC)", link: "/anchor" },
           { text: "Confidential compliance (ZK)", link: "/zk" },
         ],
       },

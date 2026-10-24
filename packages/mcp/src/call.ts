@@ -163,11 +163,9 @@ export const pinnedFetch: typeof fetch = async (input, init = {}) => {
 type LookupOptions = { family?: number; all?: boolean };
 type LookupCallback = (err: Error | null, address: string | { address: string; family: number }[], family?: number) => void;
 
-/** Why the agent may not call this URL, or null. https only, to a public host; plain http and
- *  local hosts only on testnet, where the local test sellers live. */
+/** Why the agent may not call this URL, or null. https only, to a public host. */
 export async function urlProblem(
   raw: string,
-  network: "testnet" | "pubnet",
   resolve: (host: string) => Promise<string[]>,
 ): Promise<string | null> {
   let url: URL;
@@ -176,10 +174,7 @@ export async function urlProblem(
   } catch {
     return "not a URL";
   }
-  if (url.protocol !== "https:" && !(network === "testnet" && url.protocol === "http:")) {
-    return `${url.protocol} is not allowed — https only`;
-  }
-  if (network === "testnet") return null;
+  if (url.protocol !== "https:") return `${url.protocol} is not allowed — https only`;
   const host = url.hostname.replace(/^\[|\]$/g, "");
   if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".internal")) return "local hosts are not allowed";
   const addrs = isIP(host) ? [host] : await resolve(host).catch(() => []);
@@ -195,9 +190,9 @@ const keyOf = (r: PaymentRequirements) => `${r.network}|${r.asset}|${r.payTo}|${
 export async function callService(ctx: ServerContext, args: CallArgs, deps: CallDeps = {}): Promise<CallOutcome> {
   const treasuryId = requireTreasury(ctx);
   if (!ctx.credential) throw new Error("No agent credential — run `eunomia-mcp init` first.");
-  const fetchImpl = deps.fetchImpl ?? (ctx.net.name === "pubnet" ? pinnedFetch : globalThis.fetch);
+  const fetchImpl = deps.fetchImpl ?? pinnedFetch;
   const method = (args.method ?? "POST").toUpperCase();
-  const bad = await urlProblem(args.url, ctx.net.name, deps.resolve ?? defaultResolve);
+  const bad = await urlProblem(args.url, deps.resolve ?? defaultResolve);
   if (bad) throw new Error(`refusing to call ${args.url}: ${bad}`);
   const init: RequestInit = {
     method,
