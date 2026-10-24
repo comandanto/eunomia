@@ -21,7 +21,7 @@ deployed addresses and on-chain proofs in [`DEPLOYMENT.md`](DEPLOYMENT.md).
   shipped wasm.
 - **Added** — `/api/rpc`: the page reaches the RPC provider through the worker, which holds
   the provider's keyed URL as a secret and forwards only the methods the app uses.
-- **Breaking (eunomia-mcp, next release)** — mainnet only: `EUNOMIA_RPC_URL` is required,
+- **Breaking (eunomia-mcp 0.3.0, the first release since 0.2.2)** — mainnet only: `EUNOMIA_RPC_URL` is required,
   `EUNOMIA_NETWORK` may only be `pubnet` (a config that says `testnet` now stops the server),
   `init` no longer funds the key (`--skip-fund` is gone) and prints how much XLM to send it,
   `call_service` calls https only, and a budget request link must name `pubnet`.
