@@ -1,0 +1,50 @@
+name: Bug report
+description: Something does not work as documented
+title: "fix: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For security vulnerabilities use private reporting instead (see SECURITY.md).
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - contracts
+        - web
+        - mcp
+        - x402 / prover
+        - circuits
+        - chain-indexer
+        - docs
+        - other
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you got instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1.
+        2.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Package version, or the commit of the checkout.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and screenshots
+      render: shell
