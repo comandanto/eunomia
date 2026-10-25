@@ -25,7 +25,9 @@ impl ReputationOracle {
     pub fn set_score(env: Env, agent: Address, score: i128) {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
-        env.storage().persistent().set(&DataKey::Score(agent), &score);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Score(agent), &score);
     }
 
     pub fn reputation_of(env: Env, agent: Address) -> i128 {

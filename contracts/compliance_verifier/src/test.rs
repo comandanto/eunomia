@@ -1,7 +1,7 @@
 #![cfg(test)]
 use super::*;
 use soroban_sdk::testutils::{Address as _, Ledger, MockAuth, MockAuthInvoke};
-use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env, IntoVal};
+use soroban_sdk::{Address, Bytes, BytesN, Env, IntoVal, contract, contractimpl};
 
 // Binary fixtures emitted by packages/prover (one encoder, shared with the live call).
 const PROOF: &[u8] = include_bytes!("../fixtures/proof.bin");
@@ -72,11 +72,17 @@ pub struct MockTreasury;
 #[contractimpl]
 impl MockTreasury {
     pub fn __constructor(env: Env, state: MockState) {
-        env.storage().instance().set(&symbol_short!("state"), &state);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("state"), &state);
     }
 
     pub fn get_config(env: Env) -> TreasuryConfig {
-        let s: MockState = env.storage().instance().get(&symbol_short!("state")).unwrap();
+        let s: MockState = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("state"))
+            .unwrap();
         TreasuryConfig {
             admin: s.admin.clone(),
             agent: s.admin.clone(),
@@ -87,16 +93,20 @@ impl MockTreasury {
     }
 
     pub fn period_spent(env: Env, period_id: u64) -> i128 {
-        let s: MockState = env.storage().instance().get(&symbol_short!("state")).unwrap();
-        if period_id == s.period {
-            s.spent
-        } else {
-            0
-        }
+        let s: MockState = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("state"))
+            .unwrap();
+        if period_id == s.period { s.spent } else { 0 }
     }
 
     pub fn whitelist_root(env: Env) -> Option<BytesN<32>> {
-        let s: MockState = env.storage().instance().get(&symbol_short!("state")).unwrap();
+        let s: MockState = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("state"))
+            .unwrap();
         s.root
     }
 }
@@ -333,7 +343,8 @@ fn rejects_a_period_that_has_not_closed_yet() {
     let env = Env::default();
     env.mock_all_auths();
     let (_admin, treasury, client, f) = honest_setup(&env);
-    env.ledger().with_mut(|li| li.timestamp = f.period * 86_400 + 5);
+    env.ledger()
+        .with_mut(|li| li.timestamp = f.period * 86_400 + 5);
 
     client.verify(&treasury, &proof(&env), &public(&env));
 }

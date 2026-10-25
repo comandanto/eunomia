@@ -111,11 +111,17 @@ mod test {
     #[contractimpl]
     impl FakeTreasury {
         pub fn __constructor(env: Env, admin: Address) {
-            env.storage().instance().set(&symbol_short!("admin"), &admin);
+            env.storage()
+                .instance()
+                .set(&symbol_short!("admin"), &admin);
         }
 
         pub fn get_config(env: Env) -> Config {
-            let admin: Address = env.storage().instance().get(&symbol_short!("admin")).unwrap();
+            let admin: Address = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("admin"))
+                .unwrap();
             Config {
                 admin: admin.clone(),
                 agent: admin,
@@ -189,7 +195,9 @@ mod test {
         let client = registry(&env);
 
         let owner = Address::generate(&env);
-        assert!(client.try_register(&owner, &Address::generate(&env)).is_err());
+        assert!(client
+            .try_register(&owner, &Address::generate(&env))
+            .is_err());
     }
 
     #[test]

@@ -41,7 +41,9 @@ impl EunomiaPolicy {
     /// Whitelist a payee. Admin-only.
     pub fn add_payee(env: Env, payee: Address) {
         Self::admin(&env).require_auth();
-        env.storage().persistent().set(&DataKey::Payee(payee), &true);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Payee(payee), &true);
     }
 
     /// Remove a payee from the whitelist. Admin-only.
@@ -55,8 +57,12 @@ impl EunomiaPolicy {
     /// `min_reputation = 0` to disable it (whitelist-only). Admin-only.
     pub fn set_reputation_policy(env: Env, registry: Address, min_reputation: i128) {
         Self::admin(&env).require_auth();
-        env.storage().instance().set(&DataKey::RepRegistry, &registry);
-        env.storage().instance().set(&DataKey::MinReputation, &min_reputation);
+        env.storage()
+            .instance()
+            .set(&DataKey::RepRegistry, &registry);
+        env.storage()
+            .instance()
+            .set(&DataKey::MinReputation, &min_reputation);
     }
 
     /// Whitelist membership (a view; the full gate is `is_authorized`).

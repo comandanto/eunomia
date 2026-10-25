@@ -19,8 +19,7 @@
 //! roughly six times apart in value; and a token without a cap is a token the factory
 //! refuses, so a treasury of some unknown asset cannot be created through it.
 use soroban_sdk::{
-    contract, contractclient, contractimpl, contracttype, symbol_short, Address, BytesN,
-    Env, Vec,
+    contract, contractclient, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Vec,
 };
 
 /// A time-bound, spend-capped agent credential to start the treasury with (the Leash).
@@ -112,7 +111,12 @@ impl TreasuryFactory {
     /// Immutable after deploy (no setters): a factory that could be re-pointed would be a way
     /// to hand users different code, and one whose caps could be raised would make the beta
     /// bound a promise only.
-    pub fn __constructor(env: Env, treasury_wasm: BytesN<32>, registry: Address, caps: Vec<TokenCap>) {
+    pub fn __constructor(
+        env: Env,
+        treasury_wasm: BytesN<32>,
+        registry: Address,
+        caps: Vec<TokenCap>,
+    ) {
         if caps.is_empty() {
             panic!("at least one token");
         }
@@ -148,7 +152,10 @@ impl TreasuryFactory {
     }
 
     pub fn treasury_wasm(env: Env) -> BytesN<32> {
-        env.storage().instance().get(&DataKey::TreasuryWasm).unwrap()
+        env.storage()
+            .instance()
+            .get(&DataKey::TreasuryWasm)
+            .unwrap()
     }
 
     pub fn registry(env: Env) -> Address {
@@ -165,7 +172,11 @@ impl TreasuryFactory {
         if s.leash.len() > 1 {
             panic!("at most one Leash");
         }
-        let wasm: BytesN<32> = env.storage().instance().get(&DataKey::TreasuryWasm).unwrap();
+        let wasm: BytesN<32> = env
+            .storage()
+            .instance()
+            .get(&DataKey::TreasuryWasm)
+            .unwrap();
         let registry: Address = env.storage().instance().get(&DataKey::Registry).unwrap();
         let deposit_cap: i128 = match Self::deposit_cap(env.clone(), s.token.clone()) {
             Some(cap) => cap,
@@ -173,17 +184,20 @@ impl TreasuryFactory {
         };
 
         // 1. The treasury: constructor validates the policy (InvalidLimits aborts here).
-        let treasury = env.deployer().with_current_contract(s.salt.clone()).deploy_v2(
-            wasm,
-            (
-                s.owner.clone(),
-                s.owner.clone(),
-                s.token.clone(),
-                s.daily_limit,
-                s.per_task_limit,
-                deposit_cap,
-            ),
-        );
+        let treasury = env
+            .deployer()
+            .with_current_contract(s.salt.clone())
+            .deploy_v2(
+                wasm,
+                (
+                    s.owner.clone(),
+                    s.owner.clone(),
+                    s.token.clone(),
+                    s.daily_limit,
+                    s.per_task_limit,
+                    deposit_cap,
+                ),
+            );
         let t = TreasuryClient::new(&env, &treasury);
 
         // 2. Approved payees, their caps, and the monthly budget.

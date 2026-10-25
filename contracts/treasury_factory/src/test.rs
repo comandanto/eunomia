@@ -58,7 +58,9 @@ const OTHER_CAP: i128 = 800_000_000;
 
 /// A fresh SAC with `OWNER_START` minted to `owner`. Needs `mock_all_auths`.
 fn minted_token(env: &Env, owner: &Address) -> Address {
-    let token = env.register_stellar_asset_contract_v2(owner.clone()).address();
+    let token = env
+        .register_stellar_asset_contract_v2(owner.clone())
+        .address();
     StellarAssetClient::new(env, &token).mint(owner, &OWNER_START);
     token
 }
@@ -82,10 +84,19 @@ fn world(env: &Env) -> World<'_> {
     let registry = env.register(REGISTRY_WASM, ());
     let caps = vec![
         env,
-        TokenCap { token: token.clone(), cap: DEPOSIT_CAP },
-        TokenCap { token: other.clone(), cap: OTHER_CAP },
+        TokenCap {
+            token: token.clone(),
+            cap: DEPOSIT_CAP,
+        },
+        TokenCap {
+            token: other.clone(),
+            cap: OTHER_CAP,
+        },
     ];
-    let factory_id = env.register(TreasuryFactory, (treasury_wasm(env), registry.clone(), caps));
+    let factory_id = env.register(
+        TreasuryFactory,
+        (treasury_wasm(env), registry.clone(), caps),
+    );
 
     World {
         env,
@@ -130,7 +141,12 @@ fn read<T: soroban_sdk::TryFromVal<Env, soroban_sdk::Val>>(
 }
 
 fn owned_by(env: &Env, registry: &Address, owner: &Address) -> soroban_sdk::Vec<Address> {
-    read(env, registry, "treasuries_of", vec![env, owner.into_val(env)])
+    read(
+        env,
+        registry,
+        "treasuries_of",
+        vec![env, owner.into_val(env)],
+    )
 }
 
 #[test]
@@ -142,7 +158,11 @@ fn create_deploys_configures_funds_and_registers_in_one_call() {
     let agent = Address::generate(&env);
     let s = setup(
         &w,
-        Some(Leash { agent: agent.clone(), valid_until: 1_800_086_400, limit: 300_000_000 }),
+        Some(Leash {
+            agent: agent.clone(),
+            valid_until: 1_800_086_400,
+            limit: 300_000_000,
+        }),
         200_000_000,
         true,
     );
@@ -157,10 +177,19 @@ fn create_deploys_configures_funds_and_registers_in_one_call() {
     assert_eq!(cfg.daily_limit, 1_000_000_000);
     assert_eq!(cfg.per_task_limit, 100_000_000);
 
-    let allowed: bool = read(&env, &treasury, "is_payee", vec![&env, payee.into_val(&env)]);
+    let allowed: bool = read(
+        &env,
+        &treasury,
+        "is_payee",
+        vec![&env, payee.into_val(&env)],
+    );
     assert!(allowed);
-    let stranger: bool =
-        read(&env, &treasury, "is_payee", vec![&env, Address::generate(&env).into_val(&env)]);
+    let stranger: bool = read(
+        &env,
+        &treasury,
+        "is_payee",
+        vec![&env, Address::generate(&env).into_val(&env)],
+    );
     assert!(!stranger);
 
     let session: Option<Session> = read(&env, &treasury, "get_session", vec![&env]);
@@ -188,7 +217,11 @@ fn the_owner_authorises_exactly_one_root_invocation() {
     let agent = Address::generate(&env);
     let s = setup(
         &w,
-        Some(Leash { agent, valid_until: 1_800_086_400, limit: 300_000_000 }),
+        Some(Leash {
+            agent,
+            valid_until: 1_800_086_400,
+            limit: 300_000_000,
+        }),
         200_000_000,
         true,
     );
@@ -220,7 +253,10 @@ fn the_owner_authorises_exactly_one_root_invocation() {
         .collect();
     assert_eq!(names.len(), 4, "{:?}", names);
     for expected in ["add_payee", "set_session", "deposit", "register"] {
-        assert!(names.contains(&Symbol::new(&env, expected)), "missing {expected}");
+        assert!(
+            names.contains(&Symbol::new(&env, expected)),
+            "missing {expected}"
+        );
     }
 }
 
@@ -267,7 +303,11 @@ fn an_invalid_leash_aborts_everything_including_funding() {
     env.mock_all_auths();
     env.ledger().set_timestamp(1_800_000_000);
     let w = world(&env);
-    let expired = Leash { agent: Address::generate(&env), valid_until: 1_799_999_999, limit: 1 };
+    let expired = Leash {
+        agent: Address::generate(&env),
+        valid_until: 1_799_999_999,
+        limit: 1,
+    };
     let s = setup(&w, Some(expired), 200_000_000, true);
 
     assert!(w.factory.try_create(&s).is_err());
@@ -286,7 +326,10 @@ fn two_treasuries_need_two_salts() {
     s2.salt = BytesN::from_array(&env, &[8u8; 32]);
     let b = w.factory.create(&s2);
     assert_ne!(a, b);
-    assert!(w.factory.try_create(&setup(&w, None, 0, false)).is_err(), "same salt twice");
+    assert!(
+        w.factory.try_create(&setup(&w, None, 0, false)).is_err(),
+        "same salt twice"
+    );
 }
 
 #[test]
@@ -294,9 +337,15 @@ fn the_factory_reports_what_it_instantiates() {
     let env = Env::default();
     env.mock_all_auths();
     let w = world(&env);
-    assert_eq!(w.factory.treasury_wasm(), BytesN::from_array(&env, &TREASURY_V4_HASH));
+    assert_eq!(
+        w.factory.treasury_wasm(),
+        BytesN::from_array(&env, &TREASURY_V4_HASH)
+    );
     assert_eq!(w.factory.registry(), w.registry);
-    assert_eq!(w.factory.tokens(), vec![&env, w.token.clone(), w.other.clone()]);
+    assert_eq!(
+        w.factory.tokens(),
+        vec![&env, w.token.clone(), w.other.clone()]
+    );
     assert_eq!(w.factory.deposit_cap(&w.token), Some(DEPOSIT_CAP));
     assert_eq!(w.factory.deposit_cap(&w.other), Some(OTHER_CAP));
     assert_eq!(w.factory.deposit_cap(&Address::generate(&env)), None);
@@ -346,11 +395,17 @@ fn each_token_carries_its_own_cap() {
 
     let cap: i128 = read(&env, &treasury, "deposit_cap", vec![&env]);
     assert_eq!(cap, OTHER_CAP);
-    assert_eq!(TokenClient::new(&env, &w.other).balance(&treasury), OTHER_CAP);
+    assert_eq!(
+        TokenClient::new(&env, &w.other).balance(&treasury),
+        OTHER_CAP
+    );
 
     let mut over = setup(&w, None, OTHER_CAP, false);
     over.salt = BytesN::from_array(&env, &[9u8; 32]);
-    assert!(w.factory.try_create(&over).is_err(), "OTHER_CAP is over the first token's cap");
+    assert!(
+        w.factory.try_create(&over).is_err(),
+        "OTHER_CAP is over the first token's cap"
+    );
 }
 
 /// A token without a cap is not "uncapped": the factory refuses to make the treasury.
@@ -381,7 +436,10 @@ fn a_token_cannot_be_given_two_caps() {
     let token = Address::generate(&env);
     let caps = vec![
         &env,
-        TokenCap { token: token.clone(), cap: 1 },
+        TokenCap {
+            token: token.clone(),
+            cap: 1,
+        },
         TokenCap { token, cap: 2 },
     ];
     env.register(TreasuryFactory, (treasury_wasm(&env), registry, caps));
@@ -392,7 +450,13 @@ fn a_token_cannot_be_given_two_caps() {
 fn a_negative_cap_is_refused_at_deploy() {
     let env = Env::default();
     let registry = env.register(REGISTRY_WASM, ());
-    let caps = vec![&env, TokenCap { token: Address::generate(&env), cap: -1 }];
+    let caps = vec![
+        &env,
+        TokenCap {
+            token: Address::generate(&env),
+            cap: -1,
+        },
+    ];
     env.register(TreasuryFactory, (treasury_wasm(&env), registry, caps));
 }
 
@@ -405,16 +469,28 @@ fn create_sets_the_monthly_budget_and_payee_caps() {
     let float = Address::generate(&env);
     s.monthly_limit = 2_000_000_000;
     s.payees.push_back(float.clone());
-    s.payee_caps.push_back(PayeeCap { payee: float.clone(), cap: 50_000_000 });
+    s.payee_caps.push_back(PayeeCap {
+        payee: float.clone(),
+        cap: 50_000_000,
+    });
 
     let treasury = w.factory.create(&s);
     // still one owner signature
-    let roots = env.auths().into_iter().filter(|(who, _)| *who == w.owner).count();
+    let roots = env
+        .auths()
+        .into_iter()
+        .filter(|(who, _)| *who == w.owner)
+        .count();
     assert_eq!(roots, 1);
 
     let monthly: i128 = read(&env, &treasury, "monthly_limit", vec![&env]);
     assert_eq!(monthly, 2_000_000_000);
-    let cap: i128 = read(&env, &treasury, "payee_cap", vec![&env, float.into_val(&env)]);
+    let cap: i128 = read(
+        &env,
+        &treasury,
+        "payee_cap",
+        vec![&env, float.into_val(&env)],
+    );
     assert_eq!(cap, 50_000_000);
 }
 

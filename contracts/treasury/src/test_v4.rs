@@ -61,7 +61,8 @@ fn approved(t: &T) -> Address {
 }
 
 fn next_day(env: &Env) {
-    env.ledger().set_timestamp(env.ledger().timestamp() + 86_400 + 3_600);
+    env.ledger()
+        .set_timestamp(env.ledger().timestamp() + 86_400 + 3_600);
 }
 
 // ---- the calendar ------------------------------------------------------------------
@@ -118,7 +119,10 @@ fn monthly_limit_binds_across_days_and_frees_when_the_month_turns() {
     t.client.pay(&2, &p, &100);
     next_day(&env);
     // 200 used; the daily window is empty again, so only the month refuses.
-    assert_eq!(t.client.try_pay(&3, &p, &100), Err(Ok(Error::ExceedsMonthlyLimit)));
+    assert_eq!(
+        t.client.try_pay(&3, &p, &100),
+        Err(Ok(Error::ExceedsMonthlyLimit))
+    );
     t.client.pay(&4, &p, &50); // exactly at the limit
     assert_eq!(t.client.month_spent(&t.client.this_month()), 250);
 
@@ -136,7 +140,10 @@ fn monthly_limit_zero_means_no_monthly_limit() {
     t.client.set_monthly_limit(&100);
     t.client.pay(&1, &p, &100);
     next_day(&env);
-    assert_eq!(t.client.try_pay(&2, &p, &1), Err(Ok(Error::ExceedsMonthlyLimit)));
+    assert_eq!(
+        t.client.try_pay(&2, &p, &1),
+        Err(Ok(Error::ExceedsMonthlyLimit))
+    );
     t.client.set_monthly_limit(&0);
     t.client.pay(&2, &p, &100);
 }
@@ -152,7 +159,10 @@ fn a_limit_set_mid_month_counts_what_the_month_already_moved() {
     t.client.pay(&1, &p, &100);
     next_day(&env);
     t.client.set_monthly_limit(&150);
-    assert_eq!(t.client.try_pay(&2, &p, &100), Err(Ok(Error::ExceedsMonthlyLimit)));
+    assert_eq!(
+        t.client.try_pay(&2, &p, &100),
+        Err(Ok(Error::ExceedsMonthlyLimit))
+    );
     t.client.pay(&2, &p, &50);
 }
 
@@ -166,9 +176,13 @@ fn escrow_commitments_count_against_the_month() {
     let deadline = env.ledger().timestamp() + 3_600;
     t.client.create_escrow(&1, &p, &100, &deadline);
     next_day(&env);
-    assert_eq!(t.client.try_pay(&2, &p, &100), Err(Ok(Error::ExceedsMonthlyLimit)));
     assert_eq!(
-        t.client.try_create_escrow(&3, &p, &100, &(env.ledger().timestamp() + 60)),
+        t.client.try_pay(&2, &p, &100),
+        Err(Ok(Error::ExceedsMonthlyLimit))
+    );
+    assert_eq!(
+        t.client
+            .try_create_escrow(&3, &p, &100, &(env.ledger().timestamp() + 60)),
         Err(Ok(Error::ExceedsMonthlyLimit))
     );
 }
@@ -180,7 +194,9 @@ fn release_does_not_charge_the_month_twice() {
     let t = world(&env, 0);
     let p = approved(&t);
     t.client.set_monthly_limit(&200);
-    let id = t.client.create_escrow(&1, &p, &100, &(env.ledger().timestamp() + 60));
+    let id = t
+        .client
+        .create_escrow(&1, &p, &100, &(env.ledger().timestamp() + 60));
     t.client.release_escrow(&id);
     assert_eq!(t.client.month_spent(&t.client.this_month()), 100);
     next_day(&env);
@@ -192,7 +208,10 @@ fn monthly_limit_rejects_negative() {
     let env = Env::default();
     env.mock_all_auths();
     let t = world(&env, 0);
-    assert_eq!(t.client.try_set_monthly_limit(&-1), Err(Ok(Error::InvalidLimits)));
+    assert_eq!(
+        t.client.try_set_monthly_limit(&-1),
+        Err(Ok(Error::InvalidLimits))
+    );
 }
 
 // ---- per-payee cap -----------------------------------------------------------------
@@ -209,7 +228,10 @@ fn payee_cap_binds_one_payee_and_leaves_the_others_alone() {
     assert_eq!(t.client.payee_cap(&other), 0);
 
     t.client.pay(&1, &capped, &100);
-    assert_eq!(t.client.try_pay(&2, &capped, &100), Err(Ok(Error::ExceedsPayeeCap)));
+    assert_eq!(
+        t.client.try_pay(&2, &capped, &100),
+        Err(Ok(Error::ExceedsPayeeCap))
+    );
     t.client.pay(&3, &capped, &50);
     t.client.pay(&4, &other, &100);
     let m = t.client.this_month();
@@ -227,8 +249,12 @@ fn payee_cap_counts_escrow_commitments_and_zero_removes_it() {
     let t = world(&env, 0);
     let p = approved(&t);
     t.client.set_payee_cap(&p, &100);
-    t.client.create_escrow(&1, &p, &80, &(env.ledger().timestamp() + 60));
-    assert_eq!(t.client.try_pay(&2, &p, &30), Err(Ok(Error::ExceedsPayeeCap)));
+    t.client
+        .create_escrow(&1, &p, &80, &(env.ledger().timestamp() + 60));
+    assert_eq!(
+        t.client.try_pay(&2, &p, &30),
+        Err(Ok(Error::ExceedsPayeeCap))
+    );
     t.client.set_payee_cap(&p, &0);
     assert_eq!(t.client.payee_cap(&p), 0);
     t.client.pay(&2, &p, &30);
@@ -242,7 +268,10 @@ fn payee_cap_does_not_approve_the_payee() {
     let t = world(&env, 0);
     let stranger = Address::generate(&env);
     t.client.set_payee_cap(&stranger, &1_000);
-    assert_eq!(t.client.try_pay(&1, &stranger, &10), Err(Ok(Error::PayeeNotWhitelisted)));
+    assert_eq!(
+        t.client.try_pay(&1, &stranger, &10),
+        Err(Ok(Error::PayeeNotWhitelisted))
+    );
 }
 
 /// The cap is checked before the treasury-wide month, so the agent hears the narrower reason.
@@ -254,7 +283,10 @@ fn payee_cap_is_reported_before_the_monthly_limit() {
     let p = approved(&t);
     t.client.set_payee_cap(&p, &50);
     t.client.set_monthly_limit(&50);
-    assert_eq!(t.client.try_pay(&1, &p, &60), Err(Ok(Error::ExceedsPayeeCap)));
+    assert_eq!(
+        t.client.try_pay(&1, &p, &60),
+        Err(Ok(Error::ExceedsPayeeCap))
+    );
 }
 
 #[test]
@@ -263,7 +295,10 @@ fn payee_cap_rejects_negative() {
     env.mock_all_auths();
     let t = world(&env, 0);
     let p = approved(&t);
-    assert_eq!(t.client.try_set_payee_cap(&p, &-5), Err(Ok(Error::InvalidLimits)));
+    assert_eq!(
+        t.client.try_set_payee_cap(&p, &-5),
+        Err(Ok(Error::InvalidLimits))
+    );
 }
 
 // ---- deposit cap -------------------------------------------------------------------
@@ -278,7 +313,10 @@ fn deposit_refuses_to_take_the_balance_over_the_cap() {
 
     t.client.deposit(&owner, &1_500);
     assert_eq!(t.client.balance(), 11_500);
-    assert_eq!(t.client.try_deposit(&owner, &501), Err(Ok(Error::ExceedsDepositCap)));
+    assert_eq!(
+        t.client.try_deposit(&owner, &501),
+        Err(Ok(Error::ExceedsDepositCap))
+    );
     t.client.deposit(&owner, &500); // exactly at the cap
     assert_eq!(t.client.balance(), 12_000);
     assert_eq!(t.token.balance(&owner), 3_000);
@@ -293,7 +331,10 @@ fn spending_makes_room_under_the_deposit_cap() {
     let t = world(&env, 10_000);
     let owner = Address::generate(&env);
     t.token_admin.mint(&owner, &500);
-    assert_eq!(t.client.try_deposit(&owner, &1), Err(Ok(Error::ExceedsDepositCap)));
+    assert_eq!(
+        t.client.try_deposit(&owner, &1),
+        Err(Ok(Error::ExceedsDepositCap))
+    );
     let p = approved(&t);
     t.client.pay(&1, &p, &100);
     t.client.deposit(&owner, &100);
@@ -316,8 +357,14 @@ fn deposit_rejects_non_positive_amounts() {
     env.mock_all_auths();
     let t = world(&env, 0);
     let owner = Address::generate(&env);
-    assert_eq!(t.client.try_deposit(&owner, &0), Err(Ok(Error::InvalidAmount)));
-    assert_eq!(t.client.try_deposit(&owner, &-1), Err(Ok(Error::InvalidAmount)));
+    assert_eq!(
+        t.client.try_deposit(&owner, &0),
+        Err(Ok(Error::InvalidAmount))
+    );
+    assert_eq!(
+        t.client.try_deposit(&owner, &-1),
+        Err(Ok(Error::InvalidAmount))
+    );
 }
 
 /// Nobody can deposit someone else's money: `from` signs.
@@ -349,7 +396,14 @@ fn constructor_rejects_a_negative_deposit_cap() {
     let sac = env.register_stellar_asset_contract_v2(admin.clone());
     env.register(
         Treasury,
-        (admin.clone(), admin, sac.address(), 1_000_i128, 100_i128, -1_i128),
+        (
+            admin.clone(),
+            admin,
+            sac.address(),
+            1_000_i128,
+            100_i128,
+            -1_i128,
+        ),
     );
 }
 
@@ -370,7 +424,10 @@ fn task_budget_pays_only_the_payees_it_names() {
     assert_eq!(t.client.session_payees(), vec![&env, named.clone()]);
 
     t.client.pay(&1, &named, &100);
-    assert_eq!(t.client.try_pay(&2, &other, &10), Err(Ok(Error::PayeeOutsideTaskBudget)));
+    assert_eq!(
+        t.client.try_pay(&2, &other, &10),
+        Err(Ok(Error::PayeeOutsideTaskBudget))
+    );
     assert_eq!(
         t.client.try_create_escrow(&3, &other, &10, &(until + 60)),
         Err(Ok(Error::PayeeOutsideTaskBudget))
@@ -378,7 +435,10 @@ fn task_budget_pays_only_the_payees_it_names() {
     // The budget's own cap still applies.
     t.client.pay(&4, &named, &100);
     t.client.pay(&5, &named, &100);
-    assert_eq!(t.client.try_pay(&6, &named, &1), Err(Ok(Error::ExceedsSessionLimit)));
+    assert_eq!(
+        t.client.try_pay(&6, &named, &1),
+        Err(Ok(Error::ExceedsSessionLimit))
+    );
 }
 
 /// Naming a payee in a budget does not approve it.
@@ -389,9 +449,16 @@ fn task_budget_still_needs_approved_payees() {
     let t = world(&env, 0);
     let stranger = Address::generate(&env);
     let until = env.ledger().timestamp() + 3_600;
-    t.client
-        .set_task_budget(&Address::generate(&env), &until, &300, &vec![&env, stranger.clone()]);
-    assert_eq!(t.client.try_pay(&1, &stranger, &10), Err(Ok(Error::PayeeNotWhitelisted)));
+    t.client.set_task_budget(
+        &Address::generate(&env),
+        &until,
+        &300,
+        &vec![&env, stranger.clone()],
+    );
+    assert_eq!(
+        t.client.try_pay(&1, &stranger, &10),
+        Err(Ok(Error::PayeeNotWhitelisted))
+    );
 }
 
 #[test]
@@ -440,7 +507,8 @@ fn task_budget_rejects_an_empty_or_oversized_payee_list() {
     let a = Address::generate(&env);
     let until = env.ledger().timestamp() + 60;
     assert_eq!(
-        t.client.try_set_task_budget(&a, &until, &10, &soroban_sdk::Vec::new(&env)),
+        t.client
+            .try_set_task_budget(&a, &until, &10, &soroban_sdk::Vec::new(&env)),
         Err(Ok(Error::InvalidLimits))
     );
     let mut many = soroban_sdk::Vec::new(&env);
@@ -453,7 +521,8 @@ fn task_budget_rejects_an_empty_or_oversized_payee_list() {
     );
     // and the Leash rules still apply
     assert_eq!(
-        t.client.try_set_task_budget(&a, &until, &0, &vec![&env, a.clone()]),
+        t.client
+            .try_set_task_budget(&a, &until, &0, &vec![&env, a.clone()]),
         Err(Ok(Error::InvalidLimits))
     );
 }

@@ -137,16 +137,16 @@ const SECONDS_PER_DAY: u64 = 86_400;
 // strand the funds: unreadable entry, permanently inflated lock).
 const LEDGERS_PER_WEEK: u32 = 120_960;
 const MAX_TTL_LEDGERS: u32 = 3_110_400; // ≈ 6 months of 5s ledgers (order of the network cap)
-// Instance storage (Config, Session, Locked, NextEscrowId, reputation policy, Paused) holds
-// the treasury's core policy. A low-activity treasury — e.g. one that only ever calls `pay`,
-// which writes to persistent buckets — would never otherwise bump its instance TTL, so it
-// could be archived and demand a RestoreFootprint before it works again. Every mutation
-// extends the instance TTL to keep the contract callable; cheap (a near-no-op once already
-// extended). Closes audit finding C3.
+                                        // Instance storage (Config, Session, Locked, NextEscrowId, reputation policy, Paused) holds
+                                        // the treasury's core policy. A low-activity treasury — e.g. one that only ever calls `pay`,
+                                        // which writes to persistent buckets — would never otherwise bump its instance TTL, so it
+                                        // could be archived and demand a RestoreFootprint before it works again. Every mutation
+                                        // extends the instance TTL to keep the contract callable; cheap (a near-no-op once already
+                                        // extended). Closes audit finding C3.
 const INSTANCE_TTL_THRESHOLD: u32 = LEDGERS_PER_WEEK; // extend once < ~1 week of TTL remains…
 const INSTANCE_TTL_EXTEND_TO: u32 = 4 * LEDGERS_PER_WEEK; // …back up to ~1 month
-// Month buckets (total and per payee) must outlive the month they count. Every write bumps
-// them to ~4 months, so a bucket that is still being read can never have been archived.
+                                                          // Month buckets (total and per payee) must outlive the month they count. Every write bumps
+                                                          // them to ~4 months, so a bucket that is still being read can never have been archived.
 const MONTH_TTL_THRESHOLD: u32 = 8 * LEDGERS_PER_WEEK;
 const MONTH_TTL_EXTEND_TO: u32 = 17 * LEDGERS_PER_WEEK;
 /// A task budget names at most this many payees — it lives in instance storage, which every
@@ -191,7 +191,9 @@ impl Treasury {
         if !Self::limits_are_coherent(daily_limit, per_task_limit) || deposit_cap < 0 {
             panic_with_error!(&env, Error::InvalidLimits);
         }
-        env.storage().instance().set(&DataKey::DepositCap, &deposit_cap);
+        env.storage()
+            .instance()
+            .set(&DataKey::DepositCap, &deposit_cap);
         let cfg = Config {
             admin,
             agent,
@@ -317,9 +319,13 @@ impl Treasury {
             return Err(Error::InvalidLimits);
         }
         Self::set_session(env.clone(), agent.clone(), valid_until, limit)?;
-        env.storage().instance().set(&DataKey::SessionPayees, &payees);
-        env.events()
-            .publish((symbol_short!("budget"), agent), (valid_until, limit, payees));
+        env.storage()
+            .instance()
+            .set(&DataKey::SessionPayees, &payees);
+        env.events().publish(
+            (symbol_short!("budget"), agent),
+            (valid_until, limit, payees),
+        );
         Ok(())
     }
 
@@ -360,7 +366,10 @@ impl Treasury {
     }
 
     pub fn monthly_limit(env: Env) -> i128 {
-        env.storage().instance().get(&DataKey::MonthlyLimit).unwrap_or(0)
+        env.storage()
+            .instance()
+            .get(&DataKey::MonthlyLimit)
+            .unwrap_or(0)
     }
 
     /// Most `payee` may receive per UTC calendar month. Admin-only; 0 removes the cap. The cap
@@ -380,7 +389,8 @@ impl Treasury {
         } else {
             env.storage().persistent().set(&key, &cap);
         }
-        env.events().publish((symbol_short!("payee_cap"), payee), cap);
+        env.events()
+            .publish((symbol_short!("payee_cap"), payee), cap);
         Ok(())
     }
 
@@ -436,13 +446,17 @@ impl Treasury {
             env.current_contract_address(),
             &amount,
         );
-        env.events().publish((symbol_short!("deposit"), from), amount);
+        env.events()
+            .publish((symbol_short!("deposit"), from), amount);
         Ok(())
     }
 
     /// Most this treasury takes in through `deposit` (0 = uncapped). Fixed at deploy.
     pub fn deposit_cap(env: Env) -> i128 {
-        env.storage().instance().get(&DataKey::DepositCap).unwrap_or(0)
+        env.storage()
+            .instance()
+            .get(&DataKey::DepositCap)
+            .unwrap_or(0)
     }
 
     pub fn version(_env: Env) -> u32 {
@@ -469,7 +483,10 @@ impl Treasury {
     }
 
     pub fn is_paused(env: Env) -> bool {
-        env.storage().instance().get(&DataKey::Paused).unwrap_or(false)
+        env.storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false)
     }
 
     /// Owner reclaims free (unlocked) funds with their own signature. Deliberately
@@ -734,12 +751,17 @@ impl Treasury {
             .set(&DataKey::EscrowEntry(id), &escrow);
         // Keep the entry alive comfortably past its deadline (see TTL constants above) —
         // otherwise `Locked` (instance) could outlive an archived entry and strand funds.
-        let ttl = (((deadline - now) / 5) + LEDGERS_PER_WEEK as u64).min(MAX_TTL_LEDGERS as u64) as u32;
+        let ttl =
+            (((deadline - now) / 5) + LEDGERS_PER_WEEK as u64).min(MAX_TTL_LEDGERS as u64) as u32;
         env.storage()
             .persistent()
             .extend_ttl(&DataKey::EscrowEntry(id), ttl, ttl);
-        env.storage().instance().set(&DataKey::NextEscrowId, &(id + 1));
-        env.storage().instance().set(&DataKey::Locked, &(locked + amount));
+        env.storage()
+            .instance()
+            .set(&DataKey::NextEscrowId, &(id + 1));
+        env.storage()
+            .instance()
+            .set(&DataKey::Locked, &(locked + amount));
         Self::record_window_spend(&env, amount);
         Self::record_month_spend(&env, &payee, amount, month);
         if let Some(mut s) = session {
@@ -775,21 +797,25 @@ impl Treasury {
         // EFFECTS before INTERACTION (checks-effects-interactions): record the
         // attribution, drop the escrow, release the lock, then move funds out last.
         let task_spent = Self::task_spent(env.clone(), escrow.task_id);
-        env.storage()
-            .persistent()
-            .set(&DataKey::TaskSpent(escrow.task_id), &(task_spent + escrow.amount));
+        env.storage().persistent().set(
+            &DataKey::TaskSpent(escrow.task_id),
+            &(task_spent + escrow.amount),
+        );
         env.storage().persistent().remove(&DataKey::EscrowEntry(id));
-        env.storage()
-            .instance()
-            .set(&DataKey::Locked, &(Self::locked(env.clone()) - escrow.amount));
+        env.storage().instance().set(
+            &DataKey::Locked,
+            &(Self::locked(env.clone()) - escrow.amount),
+        );
 
         token::TokenClient::new(&env, &cfg.token).transfer(
             &env.current_contract_address(),
             &escrow.payee,
             &escrow.amount,
         );
-        env.events()
-            .publish((symbol_short!("released"), id), (escrow.payee, escrow.amount));
+        env.events().publish(
+            (symbol_short!("released"), id),
+            (escrow.payee, escrow.amount),
+        );
         Ok(())
     }
 
@@ -811,12 +837,15 @@ impl Treasury {
             return Err(Error::DeadlineNotReached);
         }
         env.storage().persistent().remove(&DataKey::EscrowEntry(id));
-        env.storage()
-            .instance()
-            .set(&DataKey::Locked, &(Self::locked(env.clone()) - escrow.amount));
+        env.storage().instance().set(
+            &DataKey::Locked,
+            &(Self::locked(env.clone()) - escrow.amount),
+        );
 
-        env.events()
-            .publish((symbol_short!("refunded"), id), (escrow.payee, escrow.amount));
+        env.events().publish(
+            (symbol_short!("refunded"), id),
+            (escrow.payee, escrow.amount),
+        );
         Ok(())
     }
 
@@ -836,12 +865,15 @@ impl Treasury {
             .ok_or(Error::EscrowNotFound)?;
 
         env.storage().persistent().remove(&DataKey::EscrowEntry(id));
-        env.storage()
-            .instance()
-            .set(&DataKey::Locked, &(Self::locked(env.clone()) - escrow.amount));
+        env.storage().instance().set(
+            &DataKey::Locked,
+            &(Self::locked(env.clone()) - escrow.amount),
+        );
 
-        env.events()
-            .publish((symbol_short!("cancelled"), id), (escrow.payee, escrow.amount));
+        env.events().publish(
+            (symbol_short!("cancelled"), id),
+            (escrow.payee, escrow.amount),
+        );
         Ok(())
     }
 
