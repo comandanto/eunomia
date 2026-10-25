@@ -28,7 +28,7 @@ shipped wasm, since a contract can claim any admin. The compliance verifier (ZK)
 ## Treasury v4 — what every treasury enforces
 
 Monthly budget, payee caps, task budgets and a deposit cap on top of the v3 policy gate.
-`cargo test -p treasury` → 91, `cargo test -p treasury_factory` → 12.
+`cargo test -p treasury` → 91, `cargo test -p treasury_factory` → 17.
 
 - **Monthly budget** — `set_monthly_limit`; agent-moved value per UTC calendar month
   (`month_of`: integer civil-from-days, no host call), charged at escrow commitment.

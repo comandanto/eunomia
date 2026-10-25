@@ -72,7 +72,7 @@ contract's refusal codes ahead of time) · `list_allowed_payees` · `check_payee
 `amount`, or an x402 payment requirement in the treasury's asset) · `request_exception` /
 `check_exception` (the agent asks; the owner resolves on-chain from the dashboard) ·
 `request_budget` · `find_services` / `fund_float` / `call_service` / `sweep_float` (buying x402
-services from a bounded float). A refusal is data, not an error:
+services from a bounded float) · `float_status` (what the float holds and what `call_service` bought). A refusal is data, not an error:
 `{ paid: false, stage, reasons: [{ code, name }], nextStep }`. The dashboard prints the `init`
 command with the id filled in — during setup too, because a treasury's address is
 `hash(network, factory, salt)` and is known before the treasury exists. Details:

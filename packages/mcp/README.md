@@ -133,7 +133,7 @@ const outcome = await payFromTreasury(ctx, { to, amount: 25_000_000n, taskId: 40
 
 ## Contracts
 
-Deployed addresses, wasm hashes and the on-chain evidence for every claim above live in the repo's [`DEPLOYMENT.md`](../../DEPLOYMENT.md). Architecture and the ZK compliance layer: [eunomia.finance/docs](https://eunomia.finance/docs).
+Deployed addresses, wasm hashes and the on-chain evidence for every claim above live in the repo's [`DEPLOYMENT.md`](https://github.com/eunomia-finance/eunomia/blob/main/DEPLOYMENT.md). Architecture and the ZK compliance layer: [eunomia.finance/docs](https://eunomia.finance/docs).
 
 ## Develop
 

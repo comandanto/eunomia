@@ -16,7 +16,7 @@ Every treasury carries a **deposit cap**, fixed by the factory at creation, for 
 the beta: 500 XLM for an XLM treasury, 100 USDC for a USDC one. The factory creates
 treasuries of those two tokens only. The compliance verifier (ZK) is not deployed on mainnet in the beta.
 
-Contract test suites: treasury **91** · factory **12** · registry · verifier · policy
+Contract test suites: treasury **91** · factory **17** · registry · verifier · policy
 (`cargo test`, run in CI). What each version proved on chain before mainnet is summarised in
 [`DEPLOYMENT.md`](https://github.com/eunomia-finance/eunomia/blob/main/DEPLOYMENT.md#retired-testnet-history).
 
