@@ -1,4 +1,7 @@
 #![no_std]
+// `Events::publish` is deprecated in favour of `#[contractevent]`. Moving over changes the
+// event encoding and the built wasm, so it is a contract change of its own, not a lint fix.
+#![allow(deprecated)]
 //! Eunomia Agent Treasury
 //!
 //! A non-custodial treasury that lets a business delegate spending to an AI agent

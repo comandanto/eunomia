@@ -1305,8 +1305,7 @@ fn admin_cancel_works_while_paused_and_requires_admin() {
 
     let id2_setup = || {
         client.set_paused(&false);
-        let id2 = client.create_escrow(&2_u64, &payee, &10_i128, &SECONDS_PER_DAY);
-        id2
+        client.create_escrow(&2_u64, &payee, &10_i128, &SECONDS_PER_DAY)
     };
     let id2 = id2_setup();
     env.set_auths(&[]);

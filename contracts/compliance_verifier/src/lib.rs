@@ -1,4 +1,7 @@
 #![no_std]
+// `Events::publish` is deprecated in favour of `#[contractevent]`. Moving over changes the
+// event encoding and the built wasm, so it is a contract change of its own, not a lint fix.
+#![allow(deprecated)]
 //! Eunomia Compliance Verifier
 //!
 //! Checks a Groth16 proof that an agent's spending for a closed period obeyed its
@@ -109,8 +112,8 @@ fn fits_bits(v: &BytesN<32>, max_bits: u32) -> bool {
     let arr = v.to_array();
     let full_zero_bytes = ((256 - max_bits) / 8) as usize;
     let rem = (256 - max_bits) % 8;
-    for i in 0..full_zero_bytes {
-        if arr[i] != 0 {
+    for b in arr.iter().take(full_zero_bytes) {
+        if *b != 0 {
             return false;
         }
     }
