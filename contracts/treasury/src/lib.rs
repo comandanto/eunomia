@@ -39,6 +39,8 @@ pub enum Error {
     ExceedsMonthlyLimit = 15,
     ExceedsDepositCap = 16,
     PayeeOutsideTaskBudget = 17,
+    /// A period id too large to map onto hourly buckets without overflowing.
+    InvalidPeriod = 18,
 }
 
 #[contracttype]
@@ -630,7 +632,13 @@ impl Treasury {
     ///
     /// 24 persistent reads, one fewer than `rolling_spent` already performs per spend.
     pub fn period_spent(env: Env, period_id: u64) -> i128 {
-        let first_hour = period_id * (SECONDS_PER_DAY / SECONDS_PER_HOUR);
+        let hours_per_day = SECONDS_PER_DAY / SECONDS_PER_HOUR;
+        // A huge id would overflow the bucket index; refuse it with a typed error
+        // instead of an arithmetic panic.
+        let first_hour = match period_id.checked_mul(hours_per_day) {
+            Some(h) if h.checked_add(hours_per_day).is_some() => h,
+            _ => panic_with_error!(&env, Error::InvalidPeriod),
+        };
         let mut total = 0_i128;
         let mut h = first_hour;
         while h < first_hour + (SECONDS_PER_DAY / SECONDS_PER_HOUR) {

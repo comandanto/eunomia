@@ -31,6 +31,8 @@ mod test;
 #[repr(u32)]
 pub enum Groth16Error {
     MalformedVerifyingKey = 0,
+    /// The number of public signals does not match the verifying key.
+    MalformedPublicSignals = 1,
 }
 
 /// Every way a submission can fail, as a typed code — a malformed or dishonest proof
@@ -257,7 +259,7 @@ impl ComplianceVerifier {
         let vk = vk(&env);
 
         if pub_signals.len() + 1 != vk.ic.len() {
-            return Err(Groth16Error::MalformedVerifyingKey);
+            return Err(Groth16Error::MalformedPublicSignals);
         }
 
         let mut vk_x = vk.ic.get(0).unwrap();

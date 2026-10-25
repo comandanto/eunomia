@@ -12,4 +12,5 @@ doctest = false
 soroban-sdk = "26"
 
 [dev-dependencies]
+treasury = { path = "../treasury" }
 soroban-sdk = { version = "26", features = ["testutils"] }

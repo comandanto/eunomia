@@ -529,3 +529,78 @@ fn rejects_a_non_canonical_signal() {
 
     client.verify(&treasury, &proof(&env), &Bytes::from_slice(&env, &bytes));
 }
+
+// --- public-signal count -------------------------------------------------------------
+
+#[test]
+fn verify_proof_reports_a_signal_count_mismatch_as_its_own_error() {
+    let env = Env::default();
+    let verifier = env.register(ComplianceVerifier, ());
+    let client = ComplianceVerifierClient::new(&env, &verifier);
+
+    let a: BytesN<64> = Bytes::from_slice(&env, &PROOF[0..64]).try_into().unwrap();
+    let b: BytesN<128> = Bytes::from_slice(&env, &PROOF[64..192]).try_into().unwrap();
+    let c: BytesN<64> = Bytes::from_slice(&env, &PROOF[192..256]).try_into().unwrap();
+    let proof = Proof {
+        a: Bn254G1Affine::from_bytes(a),
+        b: Bn254G2Affine::from_bytes(b),
+        c: Bn254G1Affine::from_bytes(c),
+    };
+
+    // One signal short of what the verifying key expects.
+    let mut signals: Vec<Bn254Fr> = Vec::new(&env);
+    for i in 0..(SIGNALS - 1) {
+        let fr: BytesN<32> = public(&env).slice(i * 32..i * 32 + 32).try_into().unwrap();
+        signals.push_back(Bn254Fr::from_bytes(fr));
+    }
+
+    assert_eq!(
+        client.try_verify_proof(&proof, &signals),
+        Err(Ok(Groth16Error::MalformedPublicSignals))
+    );
+}
+
+// --- against the real treasury -------------------------------------------------------
+//
+// `MockTreasury` above returns whatever the test tells it to, so it cannot notice the
+// verifier's copied `TreasuryConfig` drifting away from `treasury::Config`. This one
+// drives the actual treasury contract: the config is decoded across the contract
+// boundary from the real type, and the period total is whatever the treasury booked.
+
+#[test]
+fn attests_against_the_real_treasury() {
+    use soroban_sdk::token::StellarAssetClient;
+    use treasury::{Treasury, TreasuryClient};
+
+    let env = Env::default();
+    env.mock_all_auths();
+    let f = fixture(&env);
+
+    let admin = Address::generate(&env);
+    let agent = Address::generate(&env);
+    let payee = Address::generate(&env);
+    let sac = env.register_stellar_asset_contract_v2(admin.clone());
+    let treasury_id = env.register(
+        Treasury,
+        (admin.clone(), agent, sac.address(), f.daily, f.per_task, 0_i128),
+    );
+    StellarAssetClient::new(&env, &sac.address()).mint(&treasury_id, &1_000_i128);
+    let treasury = TreasuryClient::new(&env, &treasury_id);
+    treasury.add_payee(&payee);
+    treasury.set_whitelist_root(&f.root);
+
+    // Move exactly the fixture's total inside the fixture's day, in two payments.
+    env.ledger().with_mut(|li| li.timestamp = f.period * 86_400 + 3_600);
+    treasury.pay(&1_u64, &payee, &f.per_task);
+    treasury.pay(&2_u64, &payee, &(f.spent - f.per_task));
+    assert_eq!(treasury.period_spent(&f.period), f.spent);
+
+    // Day closed, still inside the lookback window.
+    env.ledger().with_mut(|li| li.timestamp = (f.period + 1) * 86_400);
+    let verifier = env.register(ComplianceVerifier, ());
+    let client = ComplianceVerifierClient::new(&env, &verifier);
+
+    client.verify(&treasury_id, &proof(&env), &public(&env));
+
+    assert_eq!(client.last_period(&treasury_id), Some(f.period));
+}

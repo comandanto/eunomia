@@ -1482,3 +1482,33 @@ fn whitelist_root_is_admin_only() {
     client.set_whitelist_root(&root);
     assert_eq!(client.whitelist_root(), Some(root));
 }
+
+/// `period_id * 24` used to overflow for a large id and panic with an arithmetic error.
+/// It is now a typed refusal (`InvalidPeriod`).
+#[test]
+#[should_panic(expected = "Error(Contract, #18)")]
+fn period_spent_refuses_an_id_that_overflows_the_bucket_index() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_payee, client, _token) = setup(&env, 1000_i128, 100_i128);
+    client.period_spent(&u64::MAX);
+}
+
+/// The boundary: the last id whose 24 buckets all fit in a u64 is still readable, the
+/// next one is refused.
+#[test]
+fn period_spent_reads_the_last_id_that_fits() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_payee, client, _token) = setup(&env, 1000_i128, 100_i128);
+    assert_eq!(client.period_spent(&(u64::MAX / 24 - 1)), 0);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #18)")]
+fn period_spent_refuses_the_first_id_that_does_not_fit() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_payee, client, _token) = setup(&env, 1000_i128, 100_i128);
+    client.period_spent(&(u64::MAX / 24));
+}

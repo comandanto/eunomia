@@ -45,7 +45,7 @@ Monthly budget, payee caps, task budgets and a deposit cap on top of the v3 poli
 `1` InvalidAmount · `2` PayeeNotWhitelisted · `3` ExceedsTaskLimit · `4` ExceedsDailyLimit ·
 `5` BelowReputationThreshold · `6` InsufficientFreeBalance · `7` EscrowNotFound · `8` DeadlineNotReached ·
 `9` Paused · `10` ExceedsSessionLimit · `11` InvalidLimits · `12` InvalidDeadline ·
-`14` ExceedsPayeeCap · `15` ExceedsMonthlyLimit · `16` ExceedsDepositCap · `17` PayeeOutsideTaskBudget.
+`14` ExceedsPayeeCap · `15` ExceedsMonthlyLimit · `16` ExceedsDepositCap · `17` PayeeOutsideTaskBudget · `18` InvalidPeriod.
 13 is skipped on purpose: it is the token contract's `TrustlineMissing`, and a failure inside
 the token surfaces with the token's own numbering.
 
